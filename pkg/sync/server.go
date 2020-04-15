@@ -2,14 +2,13 @@
 package sync
 
 import (
-	"bytes"
-	"encoding/binary"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
 
 	"gitlab.com/alephledger/core-go/pkg/network"
+	"gitlab.com/alephledger/core-go/pkg/network/tcp"
 )
 
 const (
@@ -28,8 +27,9 @@ type server struct {
 	net        network.Server
 }
 
-// NewServer construcs a SyncServer object
-func NewServer(pid, nProc uint16, roundTime time.Duration, net network.Server) Server {
+// New construcs a SyncServer object
+func New(pid, nProc uint16, roundTime time.Duration, localAddr string, remoteAddrs []string) Server {
+	net, _ := tcp.NewServer(localAddr, remoteAddrs)
 	return &server{
 		pid:       pid,
 		nProc:     nProc,
@@ -44,28 +44,21 @@ func (s *server) Round(toSend []byte, check func(uint16, []byte) error, start ti
 	defer s.Unlock()
 
 	// TODO: temporary solution for scheduling the start, rewrite this ugly sleep
-	d := time.Until(start)
+	d := start.Sub(time.Now())
 	if d < 0 {
 		return nil, nil, fmt.Errorf("the start time has passed %v ago", -d)
 	}
 	time.Sleep(d)
 
-	roundDeadline := start.Add(s.roundTime)
-	var wg sync.WaitGroup
-	var errSend error
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		errSend = s.sendToAll(toSend)
-	}()
+	err := s.sendToAll(toSend)
+	if err != nil {
+		return nil, nil, err
+	}
 
+	roundDeadline := start.Add(s.roundTime)
 	data, missing, err := s.receiveFromAll(roundDeadline)
 	if err != nil {
 		return nil, missing, err
-	}
-
-	if errSend != nil {
-		return nil, nil, errSend
 	}
 
 	errors := []error{}
@@ -74,7 +67,7 @@ func (s *server) Round(toSend []byte, check func(uint16, []byte) error, start ti
 		if pid == s.pid {
 			continue
 		}
-		err = check(pid, data[pid])
+		err = check(data[pid])
 		if err != nil {
 			errors = append(errors, err)
 			wrong = append(wrong, pid)
@@ -86,7 +79,7 @@ func (s *server) Round(toSend []byte, check func(uint16, []byte) error, start ti
 	}
 
 	// TODO: better timeout handling
-	d = time.Until(roundDeadline)
+	d = roundDeadline.Sub(time.Now())
 	if d < 0 {
 		return nil, nil, fmt.Errorf("receiving took to long %v", -d)
 	}
@@ -95,9 +88,6 @@ func (s *server) Round(toSend []byte, check func(uint16, []byte) error, start ti
 }
 
 func (s *server) sendToAll(toSend []byte) error {
-	data := make([]byte, 2+len(toSend))
-	binary.LittleEndian.PutUint16(data[:2], s.pid)
-	copy(data[2:], toSend)
 	wg := sync.WaitGroup{}
 	wg.Add(int(s.nProc) - 1)
 	errors := make([]error, s.nProc)
@@ -113,7 +103,7 @@ func (s *server) sendToAll(toSend []byte) error {
 				return
 			}
 			conn.TimeoutAfter(timeout)
-			_, err = conn.Write(data)
+			_, err = conn.Write(toSend)
 			if err != nil {
 				errors[pid] = err
 				return
@@ -139,7 +129,7 @@ func (s *server) sendToAll(toSend []byte) error {
 			continue
 		}
 		if errors[pid] != nil {
-			fmt.Fprintf(&b, "[sendToAll] pid: %d, error: %v\n", pid, errors[pid])
+			fmt.Fprintf(&b, "pid: %d, error: %v\n", pid, errors[pid])
 		}
 	}
 
@@ -157,42 +147,32 @@ func (s *server) receiveFromAll(roundDeadline time.Time) ([][]byte, []uint16, er
 	wg := sync.WaitGroup{}
 	wg.Add(int(s.nProc) - 1)
 	errors := make([]error, s.nProc)
-	for i := uint16(0); i < s.nProc; i++ {
-		if i == s.pid {
-			continue
-		}
-		go func(i uint16) {
+	for pid := uint16(0); pid < s.nProc; pid++ {
+		go func(pid uint16) {
 			defer wg.Done()
 			conn, err := s.net.Listen(timeout)
 			if err != nil {
-				errors[i] = err
+				errors[pid] = err
 				return
 			}
 			conn.TimeoutAfter(timeout)
-			buf := bytes.Buffer{}
-			_, err = buf.ReadFrom(conn)
+			_, err = conn.Read(data[pid])
 			if err != nil {
-				errors[i] = err
+				errors[pid] = err
 				return
 			}
-			if len(buf.Bytes()) < 2 {
-				errors[i] = fmt.Errorf("received too short data")
-				return
-			}
-			pid := binary.LittleEndian.Uint16(buf.Bytes()[:2])
-			data[pid] = buf.Bytes()[2:]
 			err = conn.Close()
 			if err != nil {
 				errors[pid] = err
 				return
 			}
-		}(i)
+		}(pid)
 	}
 
 	wg.Wait()
 
 	// TODO: better timeout handling
-	d := time.Until(roundDeadline)
+	d := roundDeadline.Sub(time.Now())
 	if d < 0 {
 		return nil, nil, fmt.Errorf("receiving took to long %v", -d)
 	}
@@ -203,7 +183,7 @@ func (s *server) receiveFromAll(roundDeadline time.Time) ([][]byte, []uint16, er
 			continue
 		}
 		if errors[pid] != nil {
-			fmt.Fprintf(&b, "[receiveFromAll] pid: %d, error: %v\n", pid, errors[pid])
+			fmt.Fprintf(&b, "pid: %d, error: %v\n", pid, errors[pid])
 			// TODO: not all erros should be treated as missing
 			missing = append(missing, pid)
 		}
