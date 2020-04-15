@@ -16,7 +16,7 @@ var _ = Describe("Commitment Test", func() {
 		h           *commitment.ElGamal
 	)
 	BeforeEach(func() {
-		commCreator = commitment.NewElGamalFactory(group.NewGroupElem(big.NewInt(2)))
+		commCreator = commitment.NewElGamalFactory(group.NewElem(big.NewInt(2)))
 		g = commCreator.Create(big.NewInt(3), big.NewInt(5))
 		h = commCreator.Create(big.NewInt(7), big.NewInt(11))
 	})

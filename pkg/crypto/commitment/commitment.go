@@ -7,61 +7,57 @@ import (
 	"../group"
 )
 
-//NewElGamalFactory creates a new ElGamal-type ElGamal factory
-func NewElGamalFactory(h group.GroupElem) *ElGamalFactory {
-	return &ElGamalFactory{
-		h: h,
-		neutral: &ElGamal{
-			first:  group.NewGroupElem(big.NewInt(0)).Exp(group.G, big.NewInt(0)),
-			second: group.NewGroupElem(big.NewInt(0)).Operation(group.NewGroupElem(big.NewInt(0)).Exp(h, big.NewInt(0)), group.NewGroupElem(big.NewInt(0)).Exp(group.G, big.NewInt(0))),
-		},
-	}
+//NewElGamalFactory creates a new ElGamal-type Commitments factory
+func NewElGamalFactory(h group.Elem) *ElGamalFactory {
+	egf := &ElGamalFactory{h: h}
+	egf.neutral = egf.Create(big.NewInt(0), big.NewInt(0))
+	return egf
 }
 
-//ElGamalFactory Factory for ElGamal-type ElGamal
+//ElGamalFactory Factory for ElGamal-type Commitment
 type ElGamalFactory struct {
-	h       group.GroupElem
+	h       group.Elem
 	neutral *ElGamal
 }
 
-//NewElGamal creates a new ElGamal-type ElGamal
+//NewElGamal creates a new ElGamal-type Commitment
 func NewElGamal(a, b *big.Int) *ElGamal {
-	return &ElGamal{group.NewGroupElem(a), group.NewGroupElem(b)}
+	return &ElGamal{group.NewElem(a), group.NewElem(b)}
 }
 
-//ElGamal Implementation of ElGamal-type ElGamal
+//ElGamal Implementation of ElGamal-type Commitments
 type ElGamal struct {
-	first, second group.GroupElem
+	first, second group.Elem
 }
 
-//Create Create new ElGamal ElGamal
+//Create Create new ElGamal Commitment
 func (e *ElGamalFactory) Create(value, r *big.Int) *ElGamal {
 	return &ElGamal{
-		first:  group.NewGroupElem(big.NewInt(0)).Exp(group.G, r),
-		second: group.NewGroupElem(big.NewInt(0)).Operation(group.NewGroupElem(big.NewInt(0)).Exp(e.h, r), group.NewGroupElem(big.NewInt(0)).Exp(group.G, value)),
+		first:  group.NewElem(big.NewInt(0)).Mult(group.Gen, r),
+		second: group.NewElem(big.NewInt(0)).Add(group.NewElem(big.NewInt(0)).Mult(e.h, r), group.NewElem(big.NewInt(0)).Mult(group.Gen, value)),
 	}
 }
 
-//Neutral Create neutral element for compose operation of ElGamal ElGamals
+//Neutral Create neutral element for compose operation of ElGamal Commitments
 func (e *ElGamalFactory) Neutral() *ElGamal {
 	return e.neutral
 }
 
-//Compose Compose two ElGamal ElGamals
+//Compose Compose two ElGamal Commitments
 func (c *ElGamal) Compose(a, b *ElGamal) *ElGamal {
-	c.first.Operation(a.first, b.first)
-	c.second.Operation(a.second, b.second)
+	c.first.Add(a.first, b.first)
+	c.second.Add(a.second, b.second)
 	return c
 }
 
-//Exp Perform exp operation on ElGamal ElGamals
+//Exp Perform exp operation on ElGamal Commitments
 func (c *ElGamal) Exp(x *ElGamal, n *big.Int) *ElGamal {
-	c.first.Exp(x.first, n)
-	c.second.Exp(x.second, n)
+	c.first.Mult(x.first, n)
+	c.second.Mult(x.second, n)
 	return c
 }
 
-//Inverse Return inversed element for given ElGamal ElGamal
+//Inverse Return inversed element for given ElGamal Commitment
 func (c *ElGamal) Inverse(a *ElGamal) *ElGamal {
 	c.first.Inverse(a.first)
 	c.second.Inverse(a.second)
@@ -73,7 +69,7 @@ func (c *ElGamal) Cmp(a, b *ElGamal) bool {
 	return (a.first).Cmp(a.first, b.first) && (a.second).Cmp(a.second, b.second)
 }
 
-//Marshal Marshal ElGamal ElGamal
+//Marshal Marshal ElGamal Commitment
 func (c *ElGamal) Marshal() []byte {
 	firstBytes := c.first.Marshal()
 	secondBytes := c.second.Marshal()
@@ -86,7 +82,7 @@ func (c *ElGamal) Marshal() []byte {
 	return result
 }
 
-//Unmarshal Unmarshal ElGamal ElGamal
+//Unmarshal Unmarshal ElGamal Commitment
 func (c *ElGamal) Unmarshal(b []byte) *ElGamal {
 	firstLen := binary.LittleEndian.Uint32(b[0:4])
 	c.first.Unmarshal(b[4 : 4+firstLen])
