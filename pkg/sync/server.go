@@ -1,5 +1,5 @@
-// Package network in it current form works only for one round going on at a time
-package network
+// Package sync in it current form works only for one round going on at a time
+package sync
 
 import (
 	"fmt"
@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"gitlab.com/alephledger/core-go/pkg/network"
+	"gitlab.com/alephledger/core-go/pkg/network/tcp"
 )
 
 const (
@@ -28,20 +29,33 @@ GEN
     round
 */
 
-// Network represents
-type Network interface {
+// Server implements
+type Server interface {
 	Round([]byte, func([]byte) error, time.Time)
 }
 
-type network struct {
+type server struct {
+	sync.Mutex
 	pid, nProc uint16
-	requests   []chan []byte
 	roundTime  time.Duration
 	net        network.Server
 }
 
+// New construcs a SyncServer object
+func New(pid, nProc uint16, roundTime time.Duration, localAddr string, remoteAddrs []string) Server {
+	return &server{
+		pid:       pid,
+		nProc:     nProc,
+		roundTime: roundTime,
+		net:       tcp.NewServer(localAddr, remoteAddrs),
+	}
+}
+
 // TODO: return only important data in [][]byte without bytes corresponding to proofs
 func (n *network) Round(toSend []byte, check func(data []byte) error, start time.Time) ([][]byte, []uint16, error) {
+	n.Lock()
+	defer n.Unlock()
+
 	// TODO: temporary solution for scheduling the start, rewrite this ugly sleep
 	d := start.Sub(time.Now())
 	if d < 0 {
