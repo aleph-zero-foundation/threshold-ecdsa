@@ -30,7 +30,7 @@ type TDSecret interface {
 }
 
 // Gen generates a new distributed key with given label
-func Gen(label string, server sync.Server, egf commitment.ElGamalFactory, start time.Time) (ADSecret, error) {
+func Gen(label string, server sync.Server, egf commitment.ElGamalFactory) (ADSecret, error) {
 	ads := &adsecret{label: label, server: server}
 	ads.secret = rand.Int(randReader, q)
 	ads.r = rand.Int(randReader, q)
@@ -45,10 +45,11 @@ func Gen(label string, server sync.Server, egf commitment.ElGamalFactory, start 
 			return fmt.Errorf("received too short data %d", len(data))
 		}
 
+		// TODO: check zkp
 		return data == zkp
 	}
 
-	data, _, err := ads.server.Round(toSend, check, start)
+	data, _, err := ads.server.Round(toSend, check)
 	if err != nil {
 		return nil, err
 	}
