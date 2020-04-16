@@ -29,30 +29,30 @@ func NewElem(value *big.Int) Elem {
 
 //Operation Perform based operation between two Elems
 func (g groupElem) Add(a, b Elem) Elem {
-	(*g.value).Add(a.(groupElem).value, b.(groupElem).value)
+	g.value.Add(a.(groupElem).value, b.(groupElem).value)
 	return g
 }
 
 //Exp Perform exp operation on given Elem and value
 func (g groupElem) Mult(h Elem, x *big.Int) Elem {
-	(*g.value).Mul(h.(groupElem).value, x)
+	g.value.Mul(h.(groupElem).value, x)
 	return g
 }
 
 //Inverse Return inversed element for given Elem
 func (g groupElem) Inverse(h Elem) Elem {
-	(*g.value).Mul(h.(groupElem).value, big.NewInt(-1))
+	g.value.Mul(h.(groupElem).value, big.NewInt(-1))
 	return g
 }
 
 //Cmp Compare two groupElems (equal?)
-func (g groupElem) Cmp(a, b Elem) bool {
+func (groupElem) Cmp(a, b Elem) bool {
 	return a.(groupElem).value.Cmp(b.(groupElem).value) == 0
 }
 
 //Neutral Set value of this Elem to neutral value of group
 func (g groupElem) Neutral() Elem {
-	g.value = big.NewInt(0)
+	g.value.SetInt64(0)
 	return g
 }
 

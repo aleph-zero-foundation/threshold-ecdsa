@@ -40,7 +40,12 @@ func (e *ElGamalFactory) Create(value, r *big.Int) *ElGamal {
 
 //Neutral Create neutral element for compose operation of ElGamal Commitments
 func (e *ElGamalFactory) Neutral() *ElGamal {
-	return e.neutral
+	return e.Create(big.NewInt(0), big.NewInt(0))
+}
+
+//IsNeutral Chackes if element is equal to neutral one
+func (e *ElGamalFactory) IsNeutral(a *ElGamal) bool {
+	return a.Cmp(e.neutral, a)
 }
 
 //Compose Compose two ElGamal Commitments
@@ -65,7 +70,7 @@ func (c *ElGamal) Inverse(a *ElGamal) *ElGamal {
 }
 
 //Cmp Compare to ElGamal ElGamals (maybe should be called equal)
-func (c *ElGamal) Cmp(a, b *ElGamal) bool {
+func (*ElGamal) Cmp(a, b *ElGamal) bool {
 	return (a.first).Cmp(a.first, b.first) && (a.second).Cmp(a.second, b.second)
 }
 
