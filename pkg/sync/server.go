@@ -3,6 +3,7 @@ package sync
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"strings"
 	"sync"
@@ -17,7 +18,7 @@ const (
 
 // Server implements
 type Server interface {
-	Round([]byte, func([]byte) error, time.Time) ([][]byte, []uint16, error)
+	Round([]byte, func(uint16, []byte) error, time.Time) ([][]byte, []uint16, error)
 }
 
 type server struct {
@@ -38,7 +39,7 @@ func NewServer(pid, nProc uint16, roundTime time.Duration, net network.Server) S
 }
 
 // TODO: return only important data in [][]byte without bytes corresponding to proofs
-func (s *server) Round(toSend []byte, check func(data []byte) error, start time.Time) ([][]byte, []uint16, error) {
+func (s *server) Round(toSend []byte, check func(uint16, []byte) error, start time.Time) ([][]byte, []uint16, error) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -73,7 +74,7 @@ func (s *server) Round(toSend []byte, check func(data []byte) error, start time.
 		if pid == s.pid {
 			continue
 		}
-		err = check(data[pid])
+		err = check(pid, data[pid])
 		if err != nil {
 			errors = append(errors, err)
 			wrong = append(wrong, pid)
@@ -94,6 +95,9 @@ func (s *server) Round(toSend []byte, check func(data []byte) error, start time.
 }
 
 func (s *server) sendToAll(toSend []byte) error {
+	data := make([]byte, 2+len(toSend))
+	binary.LittleEndian.PutUint16(data[:2], s.pid)
+	copy(data[2:], toSend)
 	wg := sync.WaitGroup{}
 	wg.Add(int(s.nProc) - 1)
 	errors := make([]error, s.nProc)
@@ -109,7 +113,7 @@ func (s *server) sendToAll(toSend []byte) error {
 				return
 			}
 			conn.TimeoutAfter(timeout)
-			_, err = conn.Write(toSend)
+			_, err = conn.Write(data)
 			if err != nil {
 				errors[pid] = err
 				return
@@ -153,31 +157,36 @@ func (s *server) receiveFromAll(roundDeadline time.Time) ([][]byte, []uint16, er
 	wg := sync.WaitGroup{}
 	wg.Add(int(s.nProc) - 1)
 	errors := make([]error, s.nProc)
-	for pid := uint16(0); pid < s.nProc; pid++ {
-		if pid == s.pid {
+	for i := uint16(0); i < s.nProc; i++ {
+		if i == s.pid {
 			continue
 		}
-		go func(pid uint16) {
+		go func(i uint16) {
 			defer wg.Done()
 			conn, err := s.net.Listen(timeout)
 			if err != nil {
-				errors[pid] = err
+				errors[i] = err
 				return
 			}
 			conn.TimeoutAfter(timeout)
 			buf := bytes.Buffer{}
 			_, err = buf.ReadFrom(conn)
 			if err != nil {
-				errors[pid] = err
+				errors[i] = err
 				return
 			}
-			data[pid] = buf.Bytes()
+			if len(buf.Bytes()) < 2 {
+				errors[i] = fmt.Errorf("received too short data")
+				return
+			}
+			pid := binary.LittleEndian.Uint16(buf.Bytes()[:2])
+			data[pid] = buf.Bytes()[2:]
 			err = conn.Close()
 			if err != nil {
 				errors[pid] = err
 				return
 			}
-		}(pid)
+		}(i)
 	}
 
 	wg.Wait()
