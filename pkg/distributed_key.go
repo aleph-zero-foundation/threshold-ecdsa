@@ -5,18 +5,15 @@ import (
 	"math/big"
 	"time"
 
-	"./crypto/commitment"
-	"./group"
+	"./crypto/group"
 	"./sync"
+	"gitlab.com//crypto/commitment"
 )
-
-// Elem is an element in a group
-type Elem interface{}
 
 // DKey is a distirbuted key
 type DKey interface {
 	Label() string
-	RevealExp() (Elem, error)
+	RevealExp() (group.Elem, error)
 }
 
 // ADKey is an arithmetic distirbuted key

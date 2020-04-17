@@ -6,8 +6,8 @@ import (
 	"math/big"
 	"time"
 
-	"./crypto/commitment"
-	"./sync"
+	"gitlab.com/alephledger/threshold-ecdsa/crypto/commitment"
+	"gitlab.com/alephledger/threshold-ecdsa/sync"
 )
 
 // DSecret is a distributed secret
@@ -27,6 +27,19 @@ type ADSecret interface {
 type TDSecret interface {
 	DSecret
 	Threshold() uint16
+}
+
+type dsecret struct {
+	label  string
+	secret *big.Int
+	server sync.Server
+}
+
+type adsecret struct {
+	dsecret
+	r   *big.Int
+	eg  commitment.ElGamal
+	egs []commitment.ElGamal
 }
 
 // Gen generates a new distributed key with given label
@@ -63,12 +76,6 @@ func Gen(label string, server sync.Server, egf commitment.ElGamalFactory) (ADSec
 	return nil
 }
 
-type dsecret struct {
-	label  string
-	secret *big.Int
-	server sync.Server
-}
-
 func (ds *dsecret) Label() string {
 	return ds.label
 }
@@ -79,11 +86,4 @@ func (ds *dsecret) Reveal() (*big.Int, error) {
 
 func (ds *dsecret) Exp() (DKey, error) {
 	return nil, nil
-}
-
-type adsecret struct {
-	dsecret
-	r   *big.Int
-	eg  commitment.ElGamal
-	egs []commitment.ElGamal
 }
