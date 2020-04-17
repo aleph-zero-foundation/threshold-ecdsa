@@ -8,8 +8,8 @@ import (
 )
 
 var (
-	dst = [...]byte{0, 1}
-	p   = big.NewInt(13)
+	dst = [...]byte{"ThresholdECDSA"}
+	p   = big.NewInt(0).SetString("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F", 16)
 )
 
 func hashToField(msg, dst []byte) *big.Int {
