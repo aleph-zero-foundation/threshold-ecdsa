@@ -43,10 +43,8 @@ var _ = Describe("Elem Test", func() {
 	})
 	It("Marshal-Unmarshal Test", func() {
 		result := &group.FieldElem{}
-		gm, err := g.MarshalBinary()
-		Expect(err).ToNot(HaveOccurred())
-		err = result.UnmarshalBinary(gm)
-		Expect(err).ToNot(HaveOccurred())
+		gm, _ := g.MarshalBinary()
+		_ = result.UnmarshalBinary(gm)
 		cmpResult := g.Cmp(result, g)
 		Expect(cmpResult).To(BeTrue())
 	})
