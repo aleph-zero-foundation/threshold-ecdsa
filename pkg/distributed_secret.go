@@ -1,13 +1,16 @@
 package pkg
 
 import (
+	"bytes"
 	"crypto/rand"
+	"encoding/gob"
 	"fmt"
 	"math/big"
 	"time"
 
-	"gitlab.com/alephledger/threshold-ecdsa/crypto/commitment"
-	"gitlab.com/alephledger/threshold-ecdsa/sync"
+	"gitlab.com/alephledger/threshold-ecdsa/pkg/crypto/commitment"
+	"gitlab.com/alephledger/threshold-ecdsa/pkg/crypto/zkpok"
+	"gitlab.com/alephledger/threshold-ecdsa/pkg/sync"
 )
 
 // DSecret is a distributed secret
@@ -38,36 +41,62 @@ type dsecret struct {
 type adsecret struct {
 	dsecret
 	r   *big.Int
-	eg  commitment.ElGamal
-	egs []commitment.ElGamal
+	eg  *commitment.ElGamal
+	egs []*commitment.ElGamal
 }
 
 // Gen generates a new distributed key with given label
 func Gen(label string, server sync.Server, egf commitment.ElGamalFactory) (ADSecret, error) {
-	ads := &adsecret{label: label, server: server}
-	ads.secret = rand.Int(randReader, q)
-	ads.r = rand.Int(randReader, q)
-
-	ads.eg = egf.Create(a, r)
-	zkp := []byte("R_EGKnow")
-	toSend := append(zkp, ads.eg.Marshal()...)
-
-	// TODO: reimplement after ZKPs are implemented
-	check := func(data []byte) error {
-		if len(data) < len(zkp)+2 {
-			return fmt.Errorf("received too short data %d", len(data))
-		}
-
-		// TODO: check zkp
-		return data == zkp
+	var err error
+	// create a secret
+	ads := &adsecret{dsecret: dsecret{label: label, server: server}}
+	if ads.secret, err = rand.Int(randReader, q); err != nil {
+		return nil, err
+	}
+	if ads.r, err = rand.Int(randReader, q); err != nil {
+		return nil, err
 	}
 
-	data, _, err := ads.server.Round(toSend, check)
+	// create a commitment and a zkpok
+	ads.eg = egf.Create(a, r)
+	// TODO: replace with a proper zkpok when it's ready
+	zkp := zkpok.NoopZKproof{}
+
+	toSend := bytes.Buffer{}
+	enc := gob.NewEncoder(&toSend)
+	if err := enc.Encode(ads.eg); err != nil {
+		return nil, err
+	}
+	if err := enc.Encode(zkp); err != nil {
+		return nil, err
+	}
+
+	// TODO: reimplement after ZKPs are implemented
+	check := func(_ uint16, data []byte) error {
+		var (
+			eg  commitment.ElGamal
+			zkp zkpop.NewNoopZKProof
+		)
+		buf := bytes.NewBuffer(data)
+		dec := gob.NewDecoder(buf)
+		if err := dec.Decode(&eg); err != nil {
+			return err
+		}
+		if err := dec.Decode(&zkp); err != nil {
+			return err
+		}
+		if !zkp.Verify() {
+			return fmt.Errorf("Wrong proof")
+		}
+		return nil
+	}
+
+	data, _, err := ads.server.Round(toSend.Bytes(), check, time.Now())
 	if err != nil {
 		return nil, err
 	}
 
-	ads.egs = make([]commitment.ElGamal, len(data))
+	ads.egs = make([]*commitment.ElGamal, len(data))
 	for i := range data {
 		egMarsh := data[i][len(zkp):]
 		ads.egs[i] = commitment.ElGamal{}.Unmarshal(egMarsh)
