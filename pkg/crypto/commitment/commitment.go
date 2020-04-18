@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"math/big"
 
-	"../group"
+	"gitlab.com/alephledger/threshold-ecdsa/pkg/group"
 )
 
 //NewElGamalFactory creates a new ElGamal-type Commitments factory
@@ -22,7 +22,7 @@ type ElGamalFactory struct {
 
 //NewElGamal creates a new ElGamal-type Commitment
 func NewElGamal(a, b *big.Int) *ElGamal {
-	return &ElGamal{group.NewElem(a), group.NewElem(b)}
+	return &ElGamal{group.NewFieldElem(a), group.NewFieldElem(b)}
 }
 
 //ElGamal is an implementation of ElGamal-type Commitments
@@ -33,8 +33,10 @@ type ElGamal struct {
 //Create creates new ElGamal Commitment
 func (e *ElGamalFactory) Create(value, r *big.Int) *ElGamal {
 	return &ElGamal{
-		first:  group.NewElem(big.NewInt(0)).Mult(group.Gen, r),
-		second: group.NewElem(big.NewInt(0)).Add(group.NewElem(big.NewInt(0)).Mult(e.h, r), group.NewElem(big.NewInt(0)).Mult(group.Gen, value)),
+		first: group.NewFieldElem(big.NewInt(0)).Mult(&group.Gen, r),
+		second: group.NewFieldElem(big.NewInt(0)).Add(
+			group.NewFieldElem(big.NewInt(0)).Mult(e.h, r),
+			group.NewFieldElem(big.NewInt(0)).Mult(&group.Gen, value)),
 	}
 }
 
@@ -74,23 +76,30 @@ func (*ElGamal) Cmp(a, b *ElGamal) bool {
 	return (a.first).Cmp(a.first, b.first) && (a.second).Cmp(a.second, b.second)
 }
 
-//Marshal marshals ElGamal Commitment
-func (c *ElGamal) Marshal() []byte {
-	firstBytes := c.first.Marshal()
-	secondBytes := c.second.Marshal()
+//MarshalBinary marshals ElGamal Commitment
+func (c *ElGamal) MarshalBinary() ([]byte, error) {
+	firstBytes, _ := c.first.MarshalBinary()
+	secondBytes, _ := c.second.MarshalBinary()
 
 	result := make([]byte, 4, 4+len(firstBytes)+len(secondBytes))
 	binary.LittleEndian.PutUint32(result, uint32(len(firstBytes)))
 
 	result = append(result, firstBytes...)
 	result = append(result, secondBytes...)
-	return result
+	return result, nil
 }
 
-//Unmarshal unmarshals ElGamal Commitment
-func (c *ElGamal) Unmarshal(b []byte) *ElGamal {
+//UnmarshalBinary unmarshals ElGamal Commitment
+func (c *ElGamal) UnmarshalBinary(b []byte) error {
 	firstLen := binary.LittleEndian.Uint32(b[0:4])
-	c.first.Unmarshal(b[4 : 4+firstLen])
-	c.second.Unmarshal(b[4+firstLen:])
-	return c
+
+	tmp := &group.FieldElem{}
+	tmp.UnmarshalBinary(b[4 : 4+firstLen])
+	c.first = tmp
+
+	tmp = &group.FieldElem{}
+	tmp.UnmarshalBinary(b[4+firstLen:])
+	c.second = tmp
+
+	return nil
 }

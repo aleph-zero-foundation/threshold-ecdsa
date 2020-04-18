@@ -3,10 +3,10 @@ package commitment_test
 import (
 	"math/big"
 
-	"."
-	"../group"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"gitlab.com/alephledger/threshold-ecdsa/pkg/crypto/commitment"
+	"gitlab.com/alephledger/threshold-ecdsa/pkg/group"
 )
 
 var _ = Describe("Commitment Test", func() {
@@ -16,7 +16,7 @@ var _ = Describe("Commitment Test", func() {
 		h           *commitment.ElGamal
 	)
 	BeforeEach(func() {
-		commCreator = commitment.NewElGamalFactory(group.NewElem(big.NewInt(2)))
+		commCreator = commitment.NewElGamalFactory(group.NewFieldElem(big.NewInt(2)))
 		g = commCreator.Create(big.NewInt(3), big.NewInt(5))
 		h = commCreator.Create(big.NewInt(7), big.NewInt(11))
 	})
@@ -45,8 +45,9 @@ var _ = Describe("Commitment Test", func() {
 		Expect(cmpResult).To(BeTrue())
 	})
 	It("Marshal-Unmarshal Test", func() {
-		result := h.Unmarshal(g.Marshal())
-		cmpResult := g.Cmp(result, g)
+		gm, _ := g.MarshalBinary()
+		_ = h.UnmarshalBinary(gm)
+		cmpResult := g.Cmp(h, g)
 		Expect(cmpResult).To(BeTrue())
 	})
 })
