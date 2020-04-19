@@ -72,7 +72,6 @@ func (g *FieldElem) UnmarshalBinary(b []byte) error {
 
 	return nil
 }
-<<<<<<< HEAD
 
 // CurvePoint implements the Elem interface and represents a point on the curve
 type CurvePoint struct {
@@ -127,5 +126,3 @@ func (g *CurvePoint) UnmarshalBinary(b []byte) error {
 
 	return nil
 }
-=======
->>>>>>> 03f7c5f... refactor in group

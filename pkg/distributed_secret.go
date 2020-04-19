@@ -38,6 +38,18 @@ type dsecret struct {
 	server sync.Server
 }
 
+func (ds *dsecret) Label() string {
+	return ds.label
+}
+
+func (ds *dsecret) Reveal() (*big.Int, error) {
+	return nil, nil
+}
+
+func (ds *dsecret) Exp() (DKey, error) {
+	return nil, nil
+}
+
 type adsecret struct {
 	dsecret
 	r   *big.Int
@@ -45,8 +57,10 @@ type adsecret struct {
 	egs []*commitment.ElGamal
 }
 
+func (*adsecret) Reshare(_ uint16) (TDSecret, error) { return nil, nil }
+
 // Gen generates a new distributed key with given label
-func Gen(label string, server sync.Server, egf commitment.ElGamalFactory) (ADSecret, error) {
+func Gen(label string, server sync.Server, egf commitment.ElGamalFactory, start time.Time) (ADSecret, error) {
 	var err error
 	// create a secret
 	ads := &adsecret{dsecret: dsecret{label: label, server: server}}
@@ -58,7 +72,7 @@ func Gen(label string, server sync.Server, egf commitment.ElGamalFactory) (ADSec
 	}
 
 	// create a commitment and a zkpok
-	ads.eg = egf.Create(a, r)
+	ads.eg = egf.Create(ads.secret, ads.r)
 	// TODO: replace with a proper zkpok when it's ready
 	zkp := zkpok.NoopZKproof{}
 
@@ -75,7 +89,7 @@ func Gen(label string, server sync.Server, egf commitment.ElGamalFactory) (ADSec
 	check := func(_ uint16, data []byte) error {
 		var (
 			eg  commitment.ElGamal
-			zkp zkpop.NewNoopZKProof
+			zkp zkpok.NoopZKproof
 		)
 		buf := bytes.NewBuffer(data)
 		dec := gob.NewDecoder(buf)
@@ -91,28 +105,23 @@ func Gen(label string, server sync.Server, egf commitment.ElGamalFactory) (ADSec
 		return nil
 	}
 
-	data, _, err := ads.server.Round(toSend.Bytes(), check, time.Now())
+	data, _, err := ads.server.Round(toSend.Bytes(), check, start, 0)
 	if err != nil {
 		return nil, err
 	}
 
 	ads.egs = make([]*commitment.ElGamal, len(data))
+	buf := &bytes.Buffer{}
+	dec := gob.NewDecoder(buf)
 	for i := range data {
-		egMarsh := data[i][len(zkp):]
-		ads.egs[i] = commitment.ElGamal{}.Unmarshal(egMarsh)
+		buf.Reset()
+		if _, err := buf.Write(data[i]); err != nil {
+			return nil, err
+		}
+		if err := dec.Decode(ads.egs[i]); err != nil {
+			return nil, err
+		}
 	}
 
-	return nil
-}
-
-func (ds *dsecret) Label() string {
-	return ds.label
-}
-
-func (ds *dsecret) Reveal() (*big.Int, error) {
-	return nil, nil
-}
-
-func (ds *dsecret) Exp() (DKey, error) {
-	return nil, nil
+	return ads, nil
 }

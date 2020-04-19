@@ -1,13 +1,15 @@
 package pkg
 
 import (
+	"bytes"
 	"crypto/rand"
-	"math/big"
+	"encoding/gob"
+	"fmt"
 	"time"
 
-	"./crypto/group"
-	"./sync"
-	"gitlab.com//crypto/commitment"
+	"gitlab.com/alephledger/threshold-ecdsa/pkg/crypto/zkpok"
+	"gitlab.com/alephledger/threshold-ecdsa/pkg/group"
+	"gitlab.com/alephledger/threshold-ecdsa/pkg/sync"
 )
 
 // DKey is a distirbuted key
@@ -28,79 +30,150 @@ type TDKey interface {
 	Threshold() uint16
 }
 
-func GenExpReveal(label string, server sync.Server) (DKey, error) {
-	dsecret := &dsecret{
-		label:  label,
-		secret: rand.Int(randReader, q),
-		server: server,
-	}
-	dkey := &dkey{dsecret}
-
-	dkey.pk = group.NewElem(dsecret.secret)
-
-	// Round 1: commmit to (g^{a_k}, pi_k)
-	zkp := []byte("comm: R_DLog")
-	// TODO: use non-malleable commitments
-	NMC := dkey.pk
-	toSend := append(zkp, NMC.Marshal())
-
-	// TODO: sth we can check here?
-	check := func(data []byte) error { return nil }
-
-	data, _, err = server.Round(toSend, check)
-	if err != nil {
-		return nil, err
-	}
-	nmcs := make([][]byte, len(data))
-	for i := range data {
-		// TODO: unmarshal nmc
-		nmcs[i] = data[i]
-	}
-
-	// Round 2: decommit to (g^{a_k}, pi_k)
-	zkp = []byte("R_DLog")
-	toSend = append(zkp, dkey.pk.Marshal()...)
-
-	check = func(data []byte) error {
-		// TODO: use commitments from round 1
-
-		if len(data) < len(zkp)+2 {
-			return fmt.Errorf("received too short data %d", len(data))
-		}
-
-		// TODO: check zkp
-		return data == zkp
-	}
-
-	data, _, err = server.Round(toSend, check)
-	if err != nil {
-		return nil, err
-	}
-
-	dkey.pks = make([]group.Elem, len(data))
-	for i := range data {
-		dkey.pks[i] = group.Elem{}.Unmarshal(data[i])
-	}
-
-	// TODO: form global public key
-
-	return dkey, nil
-}
-
 type dkey struct {
 	secret *dsecret
-	pk     group.Elem
-	pks    []group.Elem
+	pk     *group.CurvePoint
+	pks    []*group.CurvePoint
 }
 
 func (dk *dkey) Label() string {
 	return dk.secret.Label()
 }
 
-func (dk *dkey) RevealExp() (Elem, error) {
+func (dk *dkey) RevealExp() (group.Elem, error) {
 	return nil, nil
 }
 
 type adkey struct {
 	secret adsecret
+}
+
+// NMCtmp is a temporary placeholder
+type NMCtmp struct {
+	CpBytes, ZkpBytes []byte
+}
+
+// Verify tests if ncm is a commitment to given args
+func (nmc *NMCtmp) Verify(cp *group.CurvePoint, zkp zkpok.ZKproof) error {
+	cpBytes, err := cp.MarshalBinary()
+	if err != nil {
+		return err
+	}
+	zkpBytes, err := zkp.MarshalBinary()
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(nmc.CpBytes, cpBytes) {
+		return fmt.Errorf("wrong curve point")
+	}
+	if !bytes.Equal(nmc.ZkpBytes, zkpBytes) {
+		return fmt.Errorf("wrong curve point")
+	}
+
+	return nil
+}
+
+// GenExpReveal is a method for generating a new distirbuted key
+func GenExpReveal(label string, server sync.Server, start time.Time) (DKey, error) {
+	// generate a secret
+	secret, err := rand.Int(randReader, q)
+	if err != nil {
+		return nil, err
+	}
+	dsecret := &dsecret{
+		label:  label,
+		secret: secret,
+		server: server,
+	}
+	dkey := &dkey{secret: dsecret}
+
+	dkey.pk = group.NewCurvePoint(dsecret.secret)
+
+	// Round 1: commmit to (g^{a_k}, pi_k)
+	// TODO: replace with a proper zkpok and nmc when it's ready
+	cpBytes, err := dkey.pk.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+	zkp := zkpok.NoopZKproof{}
+	zkpBytes, err := dkey.pk.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+	nmc := &NMCtmp{cpBytes, zkpBytes}
+
+	toSend := bytes.Buffer{}
+	enc := gob.NewEncoder(&toSend)
+	if err := enc.Encode(nmc); err != nil {
+		return nil, err
+	}
+
+	// TODO: sth we can check here?
+	check := func(_ uint16, _ []byte) error { return nil }
+
+	data, _, err := server.Round(toSend.Bytes(), check, start, 0)
+	if err != nil {
+		return nil, err
+	}
+	nmcs := make([]*NMCtmp, len(data))
+	for i := range data {
+		dec := gob.NewDecoder(bytes.NewBuffer(data[i]))
+		if err := dec.Decode(nmcs[i]); err != nil {
+			return nil, err
+		}
+	}
+
+	// Round 2: decommit to (g^{a_k}, pi_k)
+	zkp = zkpok.NoopZKproof{}
+	toSend.Reset()
+	if err := enc.Encode(dkey.pk); err != nil {
+		return nil, err
+	}
+	if err := enc.Encode(zkp); err != nil {
+		return nil, err
+	}
+
+	check = func(pid uint16, data []byte) error {
+		dec := gob.NewDecoder(bytes.NewBuffer(data))
+		cp := &group.CurvePoint{}
+		if err := dec.Decode(cp); err != nil {
+			return err
+		}
+		zkp := &zkpok.NoopZKproof{}
+		if err := dec.Decode(zkp); err != nil {
+			return err
+		}
+
+		if err := nmcs[pid].Verify(cp, zkp); err != nil {
+			return err
+		}
+
+		if !zkp.Verify() {
+			return fmt.Errorf("Wrong proof")
+		}
+
+		return nil
+	}
+
+	data, _, err = server.Round(toSend.Bytes(), check, start, 1)
+	if err != nil {
+		return nil, err
+	}
+
+	dkey.pks = make([]*group.CurvePoint, len(data))
+	buf := &bytes.Buffer{}
+	dec := gob.NewDecoder(buf)
+	for i := range data {
+		buf.Reset()
+		if _, err := buf.Write(data[i]); err != nil {
+			return nil, err
+		}
+		if err := dec.Decode(dkey.pks[i]); err != nil {
+			return nil, err
+		}
+	}
+
+	// TODO: form global public key
+
+	return dkey, nil
 }
