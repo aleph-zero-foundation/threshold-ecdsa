@@ -93,11 +93,11 @@ var _ = Describe("Sync Server", func() {
 					wg.Add(int(nProc))
 					go func() {
 						defer wg.Done()
-						data[alice], missing[alice], errors[alice] = syncservs[alice].Round(toSend[alice], check[alice], start)
+						data[alice], missing[alice], errors[alice] = syncservs[alice].Round(toSend[alice], check[alice], start, 0)
 					}()
 					go func() {
 						defer wg.Done()
-						data[bob], missing[bob], errors[bob] = syncservs[bob].Round(toSend[bob], check[bob], start)
+						data[bob], missing[bob], errors[bob] = syncservs[bob].Round(toSend[bob], check[bob], start, 0)
 					}()
 					wg.Wait()
 
@@ -162,7 +162,7 @@ var _ = Describe("Sync Server", func() {
 					for i := uint16(0); i < nProc; i++ {
 						go func(i uint16) {
 							defer wg.Done()
-							data[i], missing[i], errors[i] = syncservs[i].Round(toSend[i], check[i], start)
+							data[i], missing[i], errors[i] = syncservs[i].Round(toSend[i], check[i], start, 0)
 						}(i)
 					}
 					wg.Wait()

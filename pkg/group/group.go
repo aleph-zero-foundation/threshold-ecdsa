@@ -72,3 +72,57 @@ func (g *FieldElem) UnmarshalBinary(b []byte) error {
 
 	return nil
 }
+
+// CurvePoint implements the Elem interface and represents a point on the curve
+type CurvePoint struct {
+	value *big.Int
+}
+
+// NewCurvePoint constructs a new CurvePoint object
+func NewCurvePoint(value *big.Int) *CurvePoint {
+	return &CurvePoint{value}
+}
+
+//Add performs based operation between two Elems
+func (g *CurvePoint) Add(a, b Elem) Elem {
+	g.value.Add(a.(*CurvePoint).value, b.(*CurvePoint).value)
+	return g
+}
+
+//Mult performs exp operation on given Elem and value
+func (g *CurvePoint) Mult(h Elem, x *big.Int) Elem {
+	g.value.Mul(h.(*CurvePoint).value, x)
+	return g
+}
+
+//Inverse returns inversed element for given Elem
+func (g *CurvePoint) Inverse(h Elem) Elem {
+	g.value.Mul(h.(*CurvePoint).value, big.NewInt(-1))
+	return g
+}
+
+//Cmp compares two CurvePoints (equal?)
+func (*CurvePoint) Cmp(a, b Elem) bool {
+	return a.(*CurvePoint).value.Cmp(b.(*CurvePoint).value) == 0
+}
+
+//Neutral sets value of this Elem to neutral value of group
+func (g *CurvePoint) Neutral() Elem {
+	g.value.SetInt64(0)
+	return g
+}
+
+// MarshalBinary encodes Elem as bytes
+func (g CurvePoint) MarshalBinary() ([]byte, error) {
+	return g.value.Bytes(), nil
+}
+
+// UnmarshalBinary decodes Elem from bytes
+func (g *CurvePoint) UnmarshalBinary(b []byte) error {
+	if g.value == nil {
+		g.value = big.NewInt(0)
+	}
+	g.value.SetBytes(b)
+
+	return nil
+}

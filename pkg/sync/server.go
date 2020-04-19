@@ -18,7 +18,7 @@ const (
 
 // Server implements
 type Server interface {
-	Round([]byte, func(uint16, []byte) error, time.Time) ([][]byte, []uint16, error)
+	Round([]byte, func(uint16, []byte) error, time.Time, int) ([][]byte, []uint16, error)
 }
 
 type server struct {
@@ -39,7 +39,7 @@ func NewServer(pid, nProc uint16, roundTime time.Duration, net network.Server) S
 }
 
 // TODO: return only important data in [][]byte without bytes corresponding to proofs
-func (s *server) Round(toSend []byte, check func(uint16, []byte) error, start time.Time) ([][]byte, []uint16, error) {
+func (s *server) Round(toSend []byte, check func(uint16, []byte) error, start time.Time, rid int) ([][]byte, []uint16, error) {
 	s.Lock()
 	defer s.Unlock()
 
