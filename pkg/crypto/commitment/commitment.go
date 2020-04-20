@@ -22,7 +22,7 @@ type ElGamalFactory struct {
 
 //NewElGamal creates a new ElGamal-type Commitment
 func NewElGamal(a, b *big.Int) *ElGamal {
-	return &ElGamal{group.NewFieldElem(a), group.NewFieldElem(b)}
+	return &ElGamal{group.NewCurvePoint(a), group.NewCurvePoint(b)}
 }
 
 //ElGamal is an implementation of ElGamal-type Commitments
@@ -33,10 +33,10 @@ type ElGamal struct {
 //Create creates new ElGamal Commitment
 func (e *ElGamalFactory) Create(value, r *big.Int) *ElGamal {
 	return &ElGamal{
-		first: group.NewFieldElem(big.NewInt(0)).Mult(&group.Gen, r),
-		second: group.NewFieldElem(big.NewInt(0)).Add(
-			group.NewFieldElem(big.NewInt(0)).Mult(e.h, r),
-			group.NewFieldElem(big.NewInt(0)).Mult(&group.Gen, value)),
+		first: group.NewCurvePoint(big.NewInt(0)).Mult(&group.CGen, r),
+		second: group.NewCurvePoint(big.NewInt(0)).Add(
+			group.NewCurvePoint(big.NewInt(0)).Mult(e.h, r),
+			group.NewCurvePoint(big.NewInt(0)).Mult(&group.CGen, value)),
 	}
 }
 
@@ -93,11 +93,11 @@ func (c *ElGamal) MarshalBinary() ([]byte, error) {
 func (c *ElGamal) UnmarshalBinary(b []byte) error {
 	firstLen := binary.LittleEndian.Uint32(b[0:4])
 
-	tmp := &group.FieldElem{}
+	tmp := &group.CurvePoint{}
 	tmp.UnmarshalBinary(b[4 : 4+firstLen])
 	c.first = tmp
 
-	tmp = &group.FieldElem{}
+	tmp = &group.CurvePoint{}
 	tmp.UnmarshalBinary(b[4+firstLen:])
 	c.second = tmp
 

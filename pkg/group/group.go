@@ -73,9 +73,16 @@ func (g *FieldElem) UnmarshalBinary(b []byte) error {
 	return nil
 }
 
+// TODO: reimplement CurvePoint using a genuine curve
+
 // CurvePoint implements the Elem interface and represents a point on the curve
 type CurvePoint struct {
 	value *big.Int
+}
+
+// CGen is a generator of group
+var CGen = CurvePoint{
+	value: big.NewInt(1),
 }
 
 // NewCurvePoint constructs a new CurvePoint object

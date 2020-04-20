@@ -1,4 +1,4 @@
-package pkg
+package arith
 
 import (
 	"bytes"
@@ -60,14 +60,14 @@ type adsecret struct {
 func (*adsecret) Reshare(_ uint16) (TDSecret, error) { return nil, nil }
 
 // Gen generates a new distributed key with given label
-func Gen(label string, server sync.Server, egf commitment.ElGamalFactory, start time.Time) (ADSecret, error) {
+func Gen(label string, server sync.Server, egf *commitment.ElGamalFactory, start time.Time) (ADSecret, error) {
 	var err error
 	// create a secret
 	ads := &adsecret{dsecret: dsecret{label: label, server: server}}
-	if ads.secret, err = rand.Int(randReader, q); err != nil {
+	if ads.secret, err = rand.Int(randReader, Q); err != nil {
 		return nil, err
 	}
-	if ads.r, err = rand.Int(randReader, q); err != nil {
+	if ads.r, err = rand.Int(randReader, Q); err != nil {
 		return nil, err
 	}
 
@@ -94,10 +94,10 @@ func Gen(label string, server sync.Server, egf commitment.ElGamalFactory, start 
 		buf := bytes.NewBuffer(data)
 		dec := gob.NewDecoder(buf)
 		if err := dec.Decode(&eg); err != nil {
-			return err
+			return fmt.Errorf("decode: eg %v", err)
 		}
 		if err := dec.Decode(&zkp); err != nil {
-			return err
+			return fmt.Errorf("decode: zkp %v", err)
 		}
 		if !zkp.Verify() {
 			return fmt.Errorf("Wrong proof")
@@ -114,12 +114,17 @@ func Gen(label string, server sync.Server, egf commitment.ElGamalFactory, start 
 	buf := &bytes.Buffer{}
 	dec := gob.NewDecoder(buf)
 	for i := range data {
+		// TODO: ???
+		if data[i] == nil {
+			continue
+		}
+		ads.egs[i] = &commitment.ElGamal{}
 		buf.Reset()
 		if _, err := buf.Write(data[i]); err != nil {
 			return nil, err
 		}
 		if err := dec.Decode(ads.egs[i]); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("decode: egs %v", err)
 		}
 	}
 

@@ -1,4 +1,4 @@
-package pkg
+package arith
 
 import (
 	"bytes"
@@ -76,7 +76,7 @@ func (nmc *NMCtmp) Verify(cp *group.CurvePoint, zkp zkpok.ZKproof) error {
 // GenExpReveal is a method for generating a new distirbuted key
 func GenExpReveal(label string, server sync.Server, start time.Time) (DKey, error) {
 	// generate a secret
-	secret, err := rand.Int(randReader, q)
+	secret, err := rand.Int(randReader, Q)
 	if err != nil {
 		return nil, err
 	}
