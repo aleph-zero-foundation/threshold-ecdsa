@@ -24,9 +24,6 @@ var _ = Describe("Secret Test", func() {
 		nProc     uint16
 		netservs  []network.Server
 		syncservs []sync.Server
-		ads       []arith.ADSecret
-		egsk      *group.CurvePoint
-		egf       *commitment.ElGamalFactory
 		roundTime time.Duration
 		start     time.Time
 		label     string
@@ -44,6 +41,8 @@ var _ = Describe("Secret Test", func() {
 	})
 
 	BeforeEach(func() {
+		start = time.Now().Add(time.Millisecond * 10)
+		roundTime = 100 * time.Millisecond
 		rand.Seed(1729)
 	})
 
@@ -61,20 +60,24 @@ var _ = Describe("Secret Test", func() {
 			alice = 0
 			bob = 1
 			nProc = 2
-			roundTime = 2 * time.Second
-			start = time.Now().Add(time.Millisecond * 100)
 			label = "x"
-			egsk = group.NewCurvePoint(big.NewInt(rand.Int63()))
-			egf = commitment.NewElGamalFactory(egsk)
 		})
 
-		Describe("One round", func() {
+		Describe("Generating a distributed secret with arith.Gen", func() {
+
+			var (
+				ads  []arith.ADSecret
+				egsk *group.CurvePoint
+				egf  *commitment.ElGamalFactory
+			)
 
 			Context("Alice and bob are honest and alive", func() {
 
 				BeforeEach(func() {
 					ads = make([]arith.ADSecret, nProc)
 					errors = make([]error, nProc)
+					egsk = group.NewCurvePoint(big.NewInt(rand.Int63()))
+					egf = commitment.NewElGamalFactory(egsk)
 				})
 
 				It("Should finish for alice and bob", func() {
@@ -86,6 +89,37 @@ var _ = Describe("Secret Test", func() {
 					go func() {
 						defer wg.Done()
 						ads[bob], errors[bob] = arith.Gen(label, syncservs[bob], egf, start)
+					}()
+					wg.Wait()
+
+					Expect(errors[alice]).NotTo(HaveOccurred())
+					Expect(errors[bob]).NotTo(HaveOccurred())
+
+				})
+			})
+		})
+
+		Describe("Generating a distributed public key with arith.GenExpReveal", func() {
+			var (
+				dks []arith.DKey
+			)
+
+			Context("Alice and bob are honest and alive", func() {
+
+				BeforeEach(func() {
+					dks = make([]arith.DKey, nProc)
+					errors = make([]error, nProc)
+				})
+
+				It("Should finish for alice and bob", func() {
+					wg.Add(int(nProc))
+					go func() {
+						defer wg.Done()
+						dks[alice], errors[alice] = arith.GenExpReveal(label, syncservs[alice], start)
+					}()
+					go func() {
+						defer wg.Done()
+						dks[bob], errors[bob] = arith.GenExpReveal(label, syncservs[bob], start)
 					}()
 					wg.Wait()
 

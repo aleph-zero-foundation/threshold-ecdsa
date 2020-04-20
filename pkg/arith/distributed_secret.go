@@ -114,7 +114,6 @@ func Gen(label string, server sync.Server, egf *commitment.ElGamalFactory, start
 	buf := &bytes.Buffer{}
 	dec := gob.NewDecoder(buf)
 	for i := range data {
-		// TODO: ???
 		if data[i] == nil {
 			continue
 		}

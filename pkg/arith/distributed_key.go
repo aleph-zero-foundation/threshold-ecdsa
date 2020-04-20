@@ -55,18 +55,18 @@ type NMCtmp struct {
 
 // Verify tests if ncm is a commitment to given args
 func (nmc *NMCtmp) Verify(cp *group.CurvePoint, zkp zkpok.ZKproof) error {
-	cpBytes, err := cp.MarshalBinary()
-	if err != nil {
-		return err
-	}
 	zkpBytes, err := zkp.MarshalBinary()
 	if err != nil {
 		return err
 	}
-	if !bytes.Equal(nmc.CpBytes, cpBytes) {
-		return fmt.Errorf("wrong curve point")
-	}
 	if !bytes.Equal(nmc.ZkpBytes, zkpBytes) {
+		return fmt.Errorf("wrong proof")
+	}
+	cpBytes, err := cp.MarshalBinary()
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(nmc.CpBytes, cpBytes) {
 		return fmt.Errorf("wrong curve point")
 	}
 
@@ -96,7 +96,7 @@ func GenExpReveal(label string, server sync.Server, start time.Time) (DKey, erro
 		return nil, err
 	}
 	zkp := zkpok.NoopZKproof{}
-	zkpBytes, err := dkey.pk.MarshalBinary()
+	zkpBytes, err := zkp.MarshalBinary()
 	if err != nil {
 		return nil, err
 	}
@@ -117,6 +117,10 @@ func GenExpReveal(label string, server sync.Server, start time.Time) (DKey, erro
 	}
 	nmcs := make([]*NMCtmp, len(data))
 	for i := range data {
+		if data[i] == nil {
+			continue
+		}
+		nmcs[i] = &NMCtmp{}
 		dec := gob.NewDecoder(bytes.NewBuffer(data[i]))
 		if err := dec.Decode(nmcs[i]); err != nil {
 			return nil, err
@@ -164,6 +168,10 @@ func GenExpReveal(label string, server sync.Server, start time.Time) (DKey, erro
 	buf := &bytes.Buffer{}
 	dec := gob.NewDecoder(buf)
 	for i := range data {
+		if data[i] == nil {
+			continue
+		}
+		dkey.pks[i] = &group.CurvePoint{}
 		buf.Reset()
 		if _, err := buf.Write(data[i]); err != nil {
 			return nil, err
