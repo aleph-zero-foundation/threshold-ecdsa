@@ -13,7 +13,7 @@ type Group interface {
 	Add(Point, Point) Point
 	Neutral() Point
 	ScalarMult(Point, *big.Int) Point
-	ScalarBaseMult(Point, *big.Int) Point
+	ScalarBaseMult(*big.Int) Point
 	Marshal(Point) []byte
 	Unmarshal([]byte) (Point, error)
 }

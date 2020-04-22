@@ -22,11 +22,11 @@ func NewSecp256k1Group() Group {
 }
 
 // TODO: @Jedrzej Kula have fun :)
-func (g sGroup) Order() *big.Int                          { return nil }
-func (g sGroup) Gen() Point                               { return nil }
-func (g sGroup) Add(_ Point, _ Point) Point               { return nil }
-func (g sGroup) Neutral() Point                           { return nil }
-func (g sGroup) ScalarMult(_ Point, _ *big.Int) Point     { return nil }
-func (g sGroup) ScalarBaseMult(_ Point, _ *big.Int) Point { return nil }
-func (g sGroup) Marshal(_ Point) []byte                   { return nil }
-func (g sGroup) Unmarshal(_ []byte) (Point, error)        { return nil, nil }
+func (g sGroup) Order() *big.Int                      { return nil }
+func (g sGroup) Gen() Point                           { return nil }
+func (g sGroup) Add(_ Point, _ Point) Point           { return nil }
+func (g sGroup) Neutral() Point                       { return nil }
+func (g sGroup) ScalarMult(_ Point, _ *big.Int) Point { return nil }
+func (g sGroup) ScalarBaseMult(_ *big.Int) Point      { return nil }
+func (g sGroup) Marshal(_ Point) []byte               { return nil }
+func (g sGroup) Unmarshal(_ []byte) (Point, error)    { return nil, nil }
