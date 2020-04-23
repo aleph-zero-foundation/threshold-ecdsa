@@ -7,7 +7,8 @@ import (
 	"golang.org/x/crypto/hkdf"
 )
 
-func hashToField(msg []byte) *big.Int {
+//HashToBigInt takes []byte and returns its hash as a big.Int
+func HashToBigInt(msg []byte) *big.Int {
 	//48 = ceil((ceil(log2(p)) + k) / 8), where k is a bit security level
 	var t [48]byte
 	info := []byte{'H', '2', 'F', byte(0), byte(1)}
