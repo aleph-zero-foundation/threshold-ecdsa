@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"math/big"
 
-	"../../curve"
+	"gitlab.com/alephledger/threshold-ecdsa/pkg/curve"
 )
 
 var secp256k1 = curve.NewSecp256k1Group()
