@@ -6,7 +6,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/crypto/commitment"
-	"gitlab.com/alephledger/threshold-ecdsa/pkg/group"
+	"gitlab.com/alephledger/threshold-ecdsa/pkg/curve"
 )
 
 var _ = Describe("Commitment Test", func() {
@@ -14,9 +14,11 @@ var _ = Describe("Commitment Test", func() {
 		commCreator *commitment.ElGamalFactory
 		g           *commitment.ElGamal
 		h           *commitment.ElGamal
+		group       curve.Group
 	)
 	BeforeEach(func() {
-		commCreator = commitment.NewElGamalFactory(group.NewCurvePoint(big.NewInt(2)))
+		group = curve.NewSecp256k1Group()
+		commCreator = commitment.NewElGamalFactory(group.ScalarBaseMult(big.NewInt(2)))
 		g = commCreator.Create(big.NewInt(3), big.NewInt(5))
 		h = commCreator.Create(big.NewInt(7), big.NewInt(11))
 	})
