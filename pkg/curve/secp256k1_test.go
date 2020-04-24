@@ -6,8 +6,7 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	//"gitlab.com/alephledger/threshold-ecdsa/pkg/curve"
-	"."
+	"gitlab.com/alephledger/threshold-ecdsa/pkg/curve"
 )
 
 var _ = Describe("Secp256k1 Test", func() {
