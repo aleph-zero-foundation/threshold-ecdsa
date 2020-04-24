@@ -15,11 +15,13 @@ type sPoint struct {
 // sGroup implements the Group interface
 type sGroup struct {
 	curve *secp256k1.BitCurve
+	pow   *big.Int
 }
 
 // NewSecp256k1Group returns the impelementation of the group interface with the secp256k1 elliptic curve
 func NewSecp256k1Group() Group {
-	return &sGroup{secp256k1.S256()}
+	cur := secp256k1.S256()
+	return &sGroup{cur, big.NewInt(0).Sub(cur.N, big.NewInt(1))}
 }
 
 func (g sGroup) Order() *big.Int {
@@ -40,13 +42,12 @@ func (g sGroup) Add(a Point, b Point) Point {
 			resultX = nil
 			resultY = nil
 		} else {
-			//Using Add to create copy of value, since there is no such function
-			resultX = big.NewInt(0).Add(bs.x, big.NewInt(0))
-			resultY = big.NewInt(0).Add(bs.y, big.NewInt(0))
+			resultX = big.NewInt(0).Set(bs.x)
+			resultY = big.NewInt(0).Set(bs.y)
 		}
 	} else if bs.x == nil && bs.y == nil {
-		resultX = big.NewInt(0).Add(as.x, big.NewInt(0))
-		resultY = big.NewInt(0).Add(as.y, big.NewInt(0))
+		resultX = big.NewInt(0).Set(as.x)
+		resultY = big.NewInt(0).Set(as.y)
 	} else if (as.x.Cmp(bs.x) == 0) && (as.y.Cmp(bs.y) == 0) {
 		resultX, resultY = g.curve.Double(as.x, as.y)
 	} else {
@@ -61,14 +62,16 @@ func (g sGroup) Neutral() Point {
 }
 
 func (g sGroup) Neg(a Point) Point {
-	return g.ScalarMult(a, big.NewInt(0).Sub(g.curve.N, big.NewInt(1)))
+	return g.ScalarMult(a, g.pow)
 }
 
+//scale has to be a nonnegative integer
 func (g sGroup) ScalarMult(a Point, scale *big.Int) Point {
 	resultX, resultY := g.curve.ScalarMult(a.(sPoint).x, a.(sPoint).y, scale.Bytes())
 	return sPoint{resultX, resultY}
 }
 
+//scale has to be a nonnegative integer
 func (g sGroup) ScalarBaseMult(scale *big.Int) Point {
 	resultX, resultY := g.curve.ScalarBaseMult(scale.Bytes())
 	return sPoint{resultX, resultY}
@@ -87,6 +90,10 @@ func (g sGroup) Equal(a Point, b Point) bool {
 
 func (g sGroup) Marshal(a Point) []byte {
 	arr := make([]byte, 4)
+	if a.(sPoint).x == nil {
+		binary.BigEndian.PutUint32(arr, uint32(0))
+		return arr
+	}
 	binary.BigEndian.PutUint32(arr, uint32(len(a.(sPoint).x.Bytes())))
 
 	arr = append(arr, a.(sPoint).x.Bytes()...)
@@ -97,6 +104,9 @@ func (g sGroup) Marshal(a Point) []byte {
 
 func (g sGroup) Unmarshal(b []byte) (Point, error) {
 	length := binary.BigEndian.Uint32(b[0:4])
+	if length == 0 {
+		return sPoint{nil, nil}, nil
+	}
 	resultX := big.NewInt(0).SetBytes(b[4 : 4+length])
 	resultY := big.NewInt(0).SetBytes(b[4+length : len(b)])
 	return sPoint{resultX, resultY}, nil
