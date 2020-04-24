@@ -63,6 +63,7 @@ func (ads *adsecret) Reshare(t uint16) (TDSecret, error) {
 	if t < 2 {
 		return nil, fmt.Errorf("Cannot reshare with threshold %v", t)
 	}
+	nProc := len(ads.egs)
 	// 1. Publish a proof of knowledge of ads.secret and ads.r
 	toSend := bytes.Buffer{}
 	enc := gob.NewEncoder(&toSend)
@@ -71,7 +72,8 @@ func (ads *adsecret) Reshare(t uint16) (TDSecret, error) {
 	if err := enc.Encode(egknow); err != nil {
 		return nil, err
 	}
-	check := func(_ uint16, data []byte) error {
+	egknows := make([]zkpok.NoopZKproof, nProc)
+	check := func(pid uint16, data []byte) error {
 		var egknow zkpok.NoopZKproof
 		buf := bytes.NewBuffer(data)
 		dec := gob.NewDecoder(buf)
@@ -81,10 +83,14 @@ func (ads *adsecret) Reshare(t uint16) (TDSecret, error) {
 		if !egknow.Verify() {
 			return fmt.Errorf("Wrong egknow proof")
 		}
+
+		egknows[pid] = egknow
 		return nil
 	}
 
-	egknowsBytes, _, err := ads.server.Round(toSend.Bytes(), check)
+	if err := ads.server.Round(toSend.Bytes(), check); err != nil {
+		return nil, err
+	}
 
 	// 2. Pick a random polynomial f of degree t such that f(0) = ads.secret
 	var f []*big.Int
@@ -133,22 +139,18 @@ func (ads *adsecret) Reshare(t uint16) (TDSecret, error) {
 		return nil, err
 	}
 
-	check = func(_ uint16, _ []byte) error { return nil }
-
-	data, _, err := ads.server.Round(toSend.Bytes(), check)
-	if err != nil {
-		return nil, err
+	nmcs := make([]*NMCtmp, nProc)
+	check = func(pid uint16, data []byte) error {
+		nmcs[pid] = &NMCtmp{}
+		dec := gob.NewDecoder(bytes.NewBuffer(data))
+		if err := dec.Decode(nmcs[pid]); err != nil {
+			return err
+		}
+		return nil
 	}
-	nmcs := make([]*NMCtmp, len(data))
-	for i := range data {
-		if data[i] == nil {
-			continue
-		}
-		nmcs[i] = &NMCtmp{}
-		dec := gob.NewDecoder(bytes.NewBuffer(data[i]))
-		if err := dec.Decode(nmcs[i]); err != nil {
-			return nil, err
-		}
+
+	if err := ads.server.Round(toSend.Bytes(), check); err != nil {
+		return nil, err
 	}
 
 	// 5. Decommit to values from Step 4.
@@ -168,12 +170,18 @@ func (ads *adsecret) Reshare(t uint16) (TDSecret, error) {
 	check = func(pid uint16, data []byte) error {
 		dec := gob.NewDecoder(bytes.NewBuffer(data))
 		egknow := &zkpok.NoopZKproof{}
-		if err := dec.Decode(); err != nil {
+		if err := dec.Decode(egknow); err != nil {
 			return err
+		}
+		if !egknow.Verify() {
+			return fmt.Errorf("Wrong egknow proof")
 		}
 		egrefresh := &zkpok.NoopZKproof{}
 		if err := dec.Decode(egrefresh); err != nil {
 			return err
+		}
+		if !egrefresh.Verify() {
+			return fmt.Errorf("Wrong egknow proof")
 		}
 		coefComms := make([]*commitment.ElGamal, t)
 		for i := range coefComms {
@@ -192,28 +200,100 @@ func (ads *adsecret) Reshare(t uint16) (TDSecret, error) {
 			return err
 		}
 
-		if !zkp.Verify() {
-			return fmt.Errorf("Wrong proof")
+		return nil
+	}
+
+	if err := ads.server.Round(toSend.Bytes(), check); err != nil {
+		return nil, err
+	}
+
+	// 6. Compute commitments to evaluations f(l) for l in [N]
+	egEval := make([]*commitment.ElGamal, nProc)
+	var tmp commitment.ElGamal
+	for pid := 0; pid < nProc; pid++ {
+		egEval[pid] = ads.egf.Neutral()
+		exp := big.NewInt(int64(pid))
+		for i := uint16(0); i < t; i++ {
+			expexp := big.NewInt(int64(i))
+			expexp.Exp(exp, expexp)
+			tmp.Exp(coefComms[i], expexp)
+			egEval.Compose(egEval, tmp)
+		}
+	}
+
+	// 7. Recommit to f(l), fresh r_l, and ERRefresh
+	eval := make([]*big.Int, nProc)
+	randEval := make([]*big.Int, nProc)
+	egEvalRefresh := make([]*commitment.ElGamal, nProc)
+	for pid := range eval {
+		eval[pid] = eval(f, big.NewInt(int64(pid)))
+		if randEval[pid], err = rand.Int(randReader, Q); err != nil {
+			return nil, err
+		}
+		egEvalRefresh[pid] = ads.egf.Create(eval[pid], randEval[pid])
+	}
+
+	toSend.Reset()
+	for _, c := range egEvalRefresh {
+		// TODO: you know what
+		egrefresh = zkpok.NoopZKproof{}
+		if err := enc.Encode(egrefresh); err != nil {
+			return nil, err
+		}
+		if err := enc.Encode(c); err != nil {
+			return nil, err
+		}
+	}
+
+	allEgEvalRefresh := make([][]*commitment.ElGamal, nProc)
+	check = func(pid uint16, data []byte) error {
+		dec := gob.NewDecoder(bytes.NewBuffer(data))
+		allEgEvalRefresh[pid] = make([]*commitment.ElGamal, nProc)
+		for i := range allEgEvalRefresh[pid] {
+			egrefresh := &zkpok.NoopZKproof{}
+			if err := dec.Decode(egrefresh); err != nil {
+				return err
+			}
+			if !egrefresh.Verify() {
+				return fmt.Errorf("Wrong proof")
+			}
+
+			allEgEvalRefresh[i] = &commitment.ElGamal{}
+			if err := dec.Decode(allEgEvalRefresh[i]); err != nil {
+				return err
+			}
 		}
 
 		return nil
 	}
 
-	data, _, err = ads.server.Round(toSend.Bytes(), check)
-	if err != nil {
-		return err
+	if err := ads.server.Round(toSend.Bytes(), check); err != nil {
+		return nil, err
 	}
-	// TODO: read data from check
-
-	// 6. Compute commitments to evaluations f(l) for l in [N]
-
-	// 7. Recommit to f(l), fresh r_l, and ERRefresh
 
 	// 8. Send f(l), r_l to party l
+	recvEvals := make([]*big.Int, nProc)
+	recvRand := make([]*big.Int, nProc)
+	// TODO: add appropriate method to server
 
 	// 9. compute coefs of final polynomial F, sum respective random elements and join comms
+	share := big.NewInt(0)
+	shareRand := big.NewInt(0)
+	shareComm := ads.egf.Neutral()
+	for pid, e := range recvEvals {
+		if e == nil {
+			share.Add(share, evals[pid])
+			shareRand.Add(shareRand, randEval[pid])
+			// TODO: update shareComm
+			continue
+		}
+		share.Add(share, e)
+		shareRand.Add(shareRand, recvRand[pid])
+		// TODO: update shareComm
+	}
 
 	// 10. Commit to coefs of F and EGRefresh
+	// TODO. recommit to share
 
 	return nil, nil
 }
@@ -312,4 +392,9 @@ func poly(t uint16, a0 *big.Int) ([]*big.Int, error) {
 		}
 	}
 	return f, nil
+}
+
+func polyEval(f []*big.Int, x *big.Int) *big.Int {
+	// TODO: implement
+	return nil
 }
