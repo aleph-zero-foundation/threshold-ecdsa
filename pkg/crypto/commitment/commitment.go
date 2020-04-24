@@ -4,39 +4,38 @@ import (
 	"encoding/binary"
 	"math/big"
 
-	"gitlab.com/alephledger/threshold-ecdsa/pkg/group"
+	"gitlab.com/alephledger/threshold-ecdsa/pkg/curve"
 )
 
 //NewElGamalFactory creates a new ElGamal-type Commitments factory
-func NewElGamalFactory(h group.Elem) *ElGamalFactory {
+func NewElGamalFactory(h curve.Point) *ElGamalFactory {
 	egf := &ElGamalFactory{h: h}
 	egf.neutral = egf.Create(big.NewInt(0), big.NewInt(0))
+	egf.curve = curve.NewSecp256k1Group()
 	return egf
 }
 
 //ElGamalFactory is a factory for ElGamal-type Commitment
 type ElGamalFactory struct {
-	h       group.Elem
+	h       curve.Point
 	neutral *ElGamal
-}
-
-//NewElGamal creates a new ElGamal-type Commitment
-func NewElGamal(a, b *big.Int) *ElGamal {
-	return &ElGamal{group.NewCurvePoint(a), group.NewCurvePoint(b)}
+	curve   curve.Group
 }
 
 //ElGamal is an implementation of ElGamal-type Commitments
 type ElGamal struct {
-	first, second group.Elem
+	first, second curve.Point
+	curve         curve.Group
 }
 
 //Create creates new ElGamal Commitment
 func (e *ElGamalFactory) Create(value, r *big.Int) *ElGamal {
 	return &ElGamal{
-		first: group.NewCurvePoint(big.NewInt(0)).Mult(&group.CGen, r),
-		second: group.NewCurvePoint(big.NewInt(0)).Add(
-			group.NewCurvePoint(big.NewInt(0)).Mult(e.h, r),
-			group.NewCurvePoint(big.NewInt(0)).Mult(&group.CGen, value)),
+		first: e.curve.ScalarBaseMult(r),
+		second: e.curve.Add(
+			e.curve.ScalarMult(e.h, r),
+			e.curve.ScalarBaseMult(value)),
+		curve: e.curve,
 	}
 }
 
@@ -52,34 +51,34 @@ func (e *ElGamalFactory) IsNeutral(a *ElGamal) bool {
 
 //Compose composes two ElGamal Commitments
 func (c *ElGamal) Compose(a, b *ElGamal) *ElGamal {
-	c.first.Add(a.first, b.first)
-	c.second.Add(a.second, b.second)
+	c.curve.Add(a.first, b.first)
+	c.curve.Add(a.second, b.second)
 	return c
 }
 
 //Exp performs exp operation on ElGamal Commitments
 func (c *ElGamal) Exp(x *ElGamal, n *big.Int) *ElGamal {
-	c.first.Mult(x.first, n)
-	c.second.Mult(x.second, n)
+	c.curve.ScalarMult(x.first, n)
+	c.curve.ScalarMult(x.second, n)
 	return c
 }
 
 //Inverse returns inversed element for given ElGamal Commitment
 func (c *ElGamal) Inverse(a *ElGamal) *ElGamal {
-	c.first.Inverse(a.first)
-	c.second.Inverse(a.second)
+	c.curve.Neg(a.first)
+	c.curve.Neg(a.second)
 	return c
 }
 
 //Cmp compares to ElGamal ElGamals (maybe should be called equal)
-func (*ElGamal) Cmp(a, b *ElGamal) bool {
-	return (a.first).Cmp(a.first, b.first) && (a.second).Cmp(a.second, b.second)
+func (c *ElGamal) Cmp(a, b *ElGamal) bool {
+	return c.curve.Equal(a.first, b.first) && c.curve.Equal(a.second, b.second)
 }
 
 //MarshalBinary marshals ElGamal Commitment
 func (c *ElGamal) MarshalBinary() ([]byte, error) {
-	firstBytes, _ := c.first.MarshalBinary()
-	secondBytes, _ := c.second.MarshalBinary()
+	firstBytes := c.curve.Marshal(c.first)
+	secondBytes := c.curve.Marshal(c.second)
 
 	result := make([]byte, 4, 4+len(firstBytes)+len(secondBytes))
 	binary.LittleEndian.PutUint32(result, uint32(len(firstBytes)))
@@ -93,12 +92,10 @@ func (c *ElGamal) MarshalBinary() ([]byte, error) {
 func (c *ElGamal) UnmarshalBinary(b []byte) error {
 	firstLen := binary.LittleEndian.Uint32(b[0:4])
 
-	tmp := &group.CurvePoint{}
-	tmp.UnmarshalBinary(b[4 : 4+firstLen])
+	tmp, _ := c.curve.Unmarshal(b[4 : 4+firstLen])
 	c.first = tmp
 
-	tmp = &group.CurvePoint{}
-	tmp.UnmarshalBinary(b[4+firstLen:])
+	tmp, _ = c.curve.Unmarshal(b[4+firstLen:])
 	c.second = tmp
 
 	return nil
