@@ -22,8 +22,7 @@ var _ = Describe("Sync Server", func() {
 		nProc     uint16
 		netservs  []network.Server
 		syncservs []sync.Server
-		data      [][][]byte
-		missing   [][]uint16
+		allData   [][][]byte
 		errors    []error
 		wg        stdsync.WaitGroup
 		roundTime time.Duration
@@ -38,7 +37,7 @@ var _ = Describe("Sync Server", func() {
 		netservs = tests.NewNetwork(int(nProc))
 		syncservs = make([]sync.Server, int(nProc))
 		for i := uint16(0); i < nProc; i++ {
-			syncservs[i] = sync.NewServer(i, nProc, roundTime, netservs[i])
+			syncservs[i] = sync.NewServer(i, nProc, start, roundTime, netservs[i])
 		}
 	})
 
@@ -56,11 +55,10 @@ var _ = Describe("Sync Server", func() {
 			alice = 0
 			bob = 1
 			nProc = 2
-			roundTime = 2 * time.Second
+			roundTime = 300 * time.Millisecond
 			toSend = make([][]byte, nProc)
 			check = make([]func(uint16, []byte) error, nProc)
-			data = make([][][]byte, nProc)
-			missing = make([][]uint16, nProc)
+			allData = make([][][]byte, nProc)
 			errors = make([]error, nProc)
 		})
 
@@ -76,37 +74,39 @@ var _ = Describe("Sync Server", func() {
 					bobData = []byte("bob")
 					toSend[alice] = aliceData
 					toSend[bob] = bobData
-					checkDataFactory := func(expected []byte) func(uint16, []byte) error {
-						return func(_ uint16, data []byte) error {
+					for i := range allData {
+						allData[i] = make([][]byte, nProc)
+					}
+					checkDataFactory := func(id uint16, expected []byte) func(uint16, []byte) error {
+						return func(pid uint16, data []byte) error {
 							if !bytes.Equal(data, expected) {
 								return fmt.Errorf("received wrong bytes: expected \n%v\n, got\n%v", expected, data)
 							}
+							allData[id][pid] = data
 							return nil
 						}
 					}
-					check[alice] = checkDataFactory(bobData)
-					check[bob] = checkDataFactory(aliceData)
-					start = time.Now().Add(time.Second)
+					check[alice] = checkDataFactory(alice, bobData)
+					check[bob] = checkDataFactory(bob, aliceData)
+					start = time.Now().Add(100 * time.Millisecond)
 				})
 
 				It("Should finish for alice and bob", func() {
 					wg.Add(int(nProc))
 					go func() {
 						defer wg.Done()
-						data[alice], missing[alice], errors[alice] = syncservs[alice].Round(toSend[alice], check[alice], start, 0)
+						errors[alice] = syncservs[alice].Round(toSend[alice], check[alice])
 					}()
 					go func() {
 						defer wg.Done()
-						data[bob], missing[bob], errors[bob] = syncservs[bob].Round(toSend[bob], check[bob], start, 0)
+						errors[bob] = syncservs[bob].Round(toSend[bob], check[bob])
 					}()
 					wg.Wait()
 
 					Expect(errors[alice]).NotTo(HaveOccurred())
 					Expect(errors[bob]).NotTo(HaveOccurred())
-					Expect(missing[alice]).To(BeNil())
-					Expect(missing[bob]).To(BeNil())
-					Expect(data[alice]).To(Equal([][]byte{nil, bobData}))
-					Expect(data[bob]).To(Equal([][]byte{aliceData, nil}))
+					Expect(allData[alice]).To(Equal([][]byte{nil, bobData}))
+					Expect(allData[bob]).To(Equal([][]byte{aliceData, nil}))
 				})
 			})
 		})
@@ -116,11 +116,10 @@ var _ = Describe("Sync Server", func() {
 
 		BeforeEach(func() {
 			nProc = 10
-			roundTime = 2 * time.Second
+			roundTime = 300 * time.Millisecond
 			toSend = make([][]byte, nProc)
 			check = make([]func(uint16, []byte) error, nProc)
-			data = make([][][]byte, nProc)
-			missing = make([][]uint16, nProc)
+			allData = make([][][]byte, nProc)
 			errors = make([]error, nProc)
 		})
 
@@ -135,16 +134,20 @@ var _ = Describe("Sync Server", func() {
 						toSend[i] = make([]byte, 2)
 						binary.LittleEndian.PutUint16(toSend[i], i)
 					}
-					checkDataFactory := func(expected [][]byte) func(uint16, []byte) error {
+					for i := range allData {
+						allData[i] = make([][]byte, nProc)
+					}
+					checkDataFactory := func(id uint16, expected [][]byte) func(uint16, []byte) error {
 						return func(pid uint16, data []byte) error {
 							if !bytes.Equal(data, expected[pid]) {
-								return fmt.Errorf("received wrong bytes: expected \n%v\n, got\n%v", expected[pid], data)
+								return fmt.Errorf("received wrong bytes: expected \n%v\n, got\n%v", expected, data)
 							}
+							allData[id][pid] = data
 							return nil
 						}
 					}
 					for i := uint16(0); i < nProc; i++ {
-						check[i] = checkDataFactory(toSend)
+						check[i] = checkDataFactory(i, toSend)
 					}
 
 					expected = make([][][]byte, nProc)
@@ -154,7 +157,7 @@ var _ = Describe("Sync Server", func() {
 						expected[i][i] = nil
 					}
 
-					start = time.Now().Add(time.Second)
+					start = time.Now().Add(100 * time.Millisecond)
 				})
 
 				It("Should finish for all parties", func() {
@@ -162,15 +165,14 @@ var _ = Describe("Sync Server", func() {
 					for i := uint16(0); i < nProc; i++ {
 						go func(i uint16) {
 							defer wg.Done()
-							data[i], missing[i], errors[i] = syncservs[i].Round(toSend[i], check[i], start, 0)
+							syncservs[i].Round(toSend[i], check[i])
 						}(i)
 					}
 					wg.Wait()
 
 					for i := uint16(0); i < nProc; i++ {
 						Expect(errors[i]).NotTo(HaveOccurred())
-						Expect(missing[i]).To(BeNil())
-						Expect(data[i]).To(Equal(expected[i]))
+						Expect(allData[i]).To(Equal(expected[i]))
 					}
 				})
 			})

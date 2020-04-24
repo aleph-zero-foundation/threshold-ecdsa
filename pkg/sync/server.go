@@ -17,8 +17,9 @@ const (
 )
 
 // Server implements
+// TODO explain counting round internally
 type Server interface {
-	Round([]byte, func(uint16, []byte) error) ([][]byte, []uint16, error)
+	Round([]byte, func(uint16, []byte) error) error
 }
 
 type server struct {
@@ -43,18 +44,14 @@ func NewServer(pid, nProc uint16, startTime time.Time, roundTime time.Duration, 
 }
 
 // TODO: don't return any data, grab it during check
-// TODO: rework to count rounds internally and start first round befor startTime
-func (s *server) Round(toSend []byte, check func(uint16, []byte) error) ([][]byte, []uint16, error) {
-	s.Lock()
-	defer s.Unlock()
-
+func (s *server) Round(toSend []byte, check func(uint16, []byte) error) error {
+	s.roundID++
 	start := s.startTime.Add(time.Duration(s.roundID * int64(s.roundTime)))
 	// TODO: temporary solution for scheduling the start, rewrite this ugly sleep
 	d := time.Until(start)
 	if d < 0 {
-		return nil, nil, fmt.Errorf("the start time has passed %v ago", -d)
+		return fmt.Errorf("the start time for round %v has passed %v ago", s.roundID, -d)
 	}
-	s.roundID++
 	time.Sleep(d)
 
 	roundDeadline := start.Add(s.roundTime)
@@ -68,11 +65,15 @@ func (s *server) Round(toSend []byte, check func(uint16, []byte) error) ([][]byt
 
 	data, missing, err := s.receiveFromAll(roundDeadline)
 	if err != nil {
-		return nil, missing, err
+		return err
+	}
+
+	if len(missing) > 0 {
+		return newRoundError("Missing data from some parties", missing)
 	}
 
 	if errSend != nil {
-		return nil, nil, errSend
+		return errSend
 	}
 
 	errors := []error{}
@@ -89,22 +90,23 @@ func (s *server) Round(toSend []byte, check func(uint16, []byte) error) ([][]byt
 	}
 
 	if len(wrong) > 0 {
-		return nil, wrong, fmt.Errorf("Data sent by the parties %v is wrong with errors %v", wrong, errors)
+		return newRoundError(fmt.Errorf("Data sent by the parties %v is wrong with errors %v", wrong, errors).Error(), wrong)
 	}
 
 	// TODO: better timeout handling
 	d = time.Until(roundDeadline)
 	if d < 0 {
-		return nil, nil, fmt.Errorf("receiving took to long %v", -d)
+		return fmt.Errorf("receiving took too long %v", -d)
 	}
 
-	return data, nil, nil
+	return nil
 }
 
 func (s *server) sendToAll(toSend []byte) error {
-	data := make([]byte, 2+len(toSend))
+	data := make([]byte, 10+len(toSend))
 	binary.LittleEndian.PutUint16(data[:2], s.pid)
-	copy(data[2:], toSend)
+	binary.LittleEndian.PutUint64(data[2:10], uint64(s.roundID))
+	copy(data[10:], toSend)
 	wg := sync.WaitGroup{}
 	wg.Add(int(s.nProc) - 1)
 	errors := make([]error, s.nProc)
@@ -119,6 +121,7 @@ func (s *server) sendToAll(toSend []byte) error {
 				errors[pid] = err
 				return
 			}
+			defer conn.Close()
 			conn.TimeoutAfter(timeout)
 			_, err = conn.Write(data)
 			if err != nil {
@@ -126,11 +129,6 @@ func (s *server) sendToAll(toSend []byte) error {
 				return
 			}
 			err = conn.Flush()
-			if err != nil {
-				errors[pid] = err
-				return
-			}
-			err = conn.Close()
 			if err != nil {
 				errors[pid] = err
 				return
@@ -170,29 +168,33 @@ func (s *server) receiveFromAll(roundDeadline time.Time) ([][]byte, []uint16, er
 		}
 		go func(i uint16) {
 			defer wg.Done()
+
 			conn, err := s.net.Listen(timeout)
 			if err != nil {
 				errors[i] = err
 				return
 			}
+
+			defer conn.Close()
 			conn.TimeoutAfter(timeout)
+
 			buf := bytes.Buffer{}
 			_, err = buf.ReadFrom(conn)
 			if err != nil {
 				errors[i] = err
 				return
 			}
-			if len(buf.Bytes()) < 2 {
+			if len(buf.Bytes()) < 10 {
 				errors[i] = fmt.Errorf("received too short data")
 				return
 			}
 			pid := binary.LittleEndian.Uint16(buf.Bytes()[:2])
-			data[pid] = buf.Bytes()[2:]
-			err = conn.Close()
-			if err != nil {
-				errors[pid] = err
-				return
+			roundID := binary.LittleEndian.Uint64(buf.Bytes()[2:10])
+			if int64(roundID) != s.roundID {
+				errors[i] = fmt.Errorf("received data for wrong round. Expected %d, got %d", s.roundID, roundID)
 			}
+
+			data[pid] = buf.Bytes()[10:]
 		}(i)
 	}
 
@@ -220,5 +222,5 @@ func (s *server) receiveFromAll(roundDeadline time.Time) ([][]byte, []uint16, er
 		return nil, missing, fmt.Errorf(b.String())
 	}
 
-	return data, missing, nil
+	return data, nil, nil
 }
