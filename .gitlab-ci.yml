@@ -1,0 +1,63 @@
+image: golang:1.12.5
+
+cache:
+  paths:
+    - /apt-cache
+    - /go/src/github.com
+    - /go/src/golang.org
+    - /go/src/google.golang.org
+    - /go/src/gopkg.in
+
+variables:
+  VENDOR_NAME: 'alephledger'
+  MAIN_FOLDER: 'gitlab.com/alephledger'
+  PKG: '${MAIN_FOLDER}/threshold-ecdsa'
+  TOTEST: '${MAIN_FOLDER}/threshold-ecdsa/pkg'
+
+stages:
+  - test
+  - build
+
+before_script:
+  - chmod +x .gitlab/ci/before_script.sh
+  - .gitlab/ci/before_script.sh ${GOPATH} ${MAIN_FOLDER} ${PKG} ${VENDOR_NAME} ${CI_PROJECT_DIR}
+
+unit_tests:
+  stage: test
+  script:
+    - .gitlab/ci/make_test.sh ${TOTEST}
+
+race_detector:
+  stage: test
+  script:
+    - .gitlab/ci/make_race.sh ${TOTEST}
+
+code_coverage_report:
+  stage: build
+  script:
+    - .gitlab/ci/make_coverage.sh ${TOTEST} coverage.cov coverage.output coverage.html
+  artifacts:
+    paths:
+      - coverage.output
+      - coverage.html
+    expire_in: 1 week
+  coverage: '/^total:\s*\(statements\)\s*(\d+(?:\.\d+)?%)/'
+
+lint_code:
+  stage: test
+  script:
+    - .gitlab/ci/make_lint.sh ${PKG} golint.out
+  artifacts:
+    paths:
+      - golint.out
+    expire_in: 1 week
+
+gofmt:
+  stage: test
+  script:
+    - .gitlab/ci/make_fmt.sh ${PKG}
+
+build:
+  stage: build
+  script:
+    - .gitlab/ci/make_build.sh ${PKG} ${GOPATH}
