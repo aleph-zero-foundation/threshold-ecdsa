@@ -33,7 +33,7 @@ func (g sGroup) Gen() Point {
 func (g sGroup) Add(a Point, b Point) Point {
 	var resultX, resultY *big.Int
 	as := a.(sPoint)
-	bs := a.(sPoint)
+	bs := b.(sPoint)
 
 	if as.x == nil && as.y == nil {
 		if bs.x == nil && bs.y == nil {
@@ -47,6 +47,8 @@ func (g sGroup) Add(a Point, b Point) Point {
 	} else if bs.x == nil && bs.y == nil {
 		resultX = big.NewInt(0).Add(as.x, big.NewInt(0))
 		resultY = big.NewInt(0).Add(as.y, big.NewInt(0))
+	} else if (as.x.Cmp(bs.x) == 0) && (as.y.Cmp(bs.y) == 0) {
+		resultX, resultY = g.curve.Double(as.x, as.y)
 	} else {
 		resultX, resultY = g.curve.Add(as.x, as.y, bs.x, bs.y)
 	}
