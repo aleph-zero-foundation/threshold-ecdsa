@@ -18,37 +18,43 @@ const (
 
 // Server implements
 type Server interface {
-	Round([]byte, func(uint16, []byte) error, time.Time, int64) ([][]byte, []uint16, error)
+	Round([]byte, func(uint16, []byte) error) ([][]byte, []uint16, error)
 }
 
 type server struct {
 	sync.Mutex
 	pid, nProc uint16
+	startTime  time.Time
 	roundTime  time.Duration
+	roundID    int64
 	net        network.Server
 }
 
 // NewServer construcs a SyncServer object
-func NewServer(pid, nProc uint16, roundTime time.Duration, net network.Server) Server {
+func NewServer(pid, nProc uint16, startTime time.Time, roundTime time.Duration, net network.Server) Server {
 	return &server{
 		pid:       pid,
 		nProc:     nProc,
+		startTime: startTime,
 		roundTime: roundTime,
+		roundID:   -1,
 		net:       net,
 	}
 }
 
-// TODO: return only important data in [][]byte without bytes corresponding to proofs
-func (s *server) Round(toSend []byte, check func(uint16, []byte) error, start time.Time, rid int64) ([][]byte, []uint16, error) {
+// TODO: don't return any data, grab it during check
+// TODO: rework to count rounds internally and start first round befor startTime
+func (s *server) Round(toSend []byte, check func(uint16, []byte) error) ([][]byte, []uint16, error) {
 	s.Lock()
 	defer s.Unlock()
 
-	start = start.Add(time.Duration(rid * int64(s.roundTime)))
+	start := s.startTime.Add(time.Duration(s.roundID * int64(s.roundTime)))
 	// TODO: temporary solution for scheduling the start, rewrite this ugly sleep
 	d := time.Until(start)
 	if d < 0 {
 		return nil, nil, fmt.Errorf("the start time has passed %v ago", -d)
 	}
+	s.roundID++
 	time.Sleep(d)
 
 	roundDeadline := start.Add(s.roundTime)

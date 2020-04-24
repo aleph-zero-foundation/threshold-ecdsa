@@ -50,24 +50,16 @@ type adkey struct {
 
 // NMCtmp is a temporary placeholder
 type NMCtmp struct {
-	CpBytes, ZkpBytes []byte
+	DataBytes, ZkpBytes []byte
 }
 
 // Verify tests if ncm is a commitment to given args
-func (nmc *NMCtmp) Verify(cp *group.CurvePoint, zkp zkpok.ZKproof) error {
-	zkpBytes, err := zkp.MarshalBinary()
-	if err != nil {
-		return err
+func (nmc *NMCtmp) Verify(dataBytes, zkpBytes []byte) error {
+	if !bytes.Equal(nmc.DataBytes, dataBytes) {
+		return fmt.Errorf("wrong data bytes")
 	}
 	if !bytes.Equal(nmc.ZkpBytes, zkpBytes) {
-		return fmt.Errorf("wrong proof")
-	}
-	cpBytes, err := cp.MarshalBinary()
-	if err != nil {
-		return err
-	}
-	if !bytes.Equal(nmc.CpBytes, cpBytes) {
-		return fmt.Errorf("wrong curve point")
+		return fmt.Errorf("wrong proof bytes")
 	}
 
 	return nil
@@ -91,7 +83,7 @@ func GenExpReveal(label string, server sync.Server, start time.Time) (DKey, erro
 
 	// Round 1: commmit to (g^{a_k}, pi_k)
 	// TODO: replace with a proper zkpok and nmc when it's ready
-	cpBytes, err := dkey.pk.MarshalBinary()
+	dataBytes, err := dkey.pk.MarshalBinary()
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +92,7 @@ func GenExpReveal(label string, server sync.Server, start time.Time) (DKey, erro
 	if err != nil {
 		return nil, err
 	}
-	nmc := &NMCtmp{cpBytes, zkpBytes}
+	nmc := &NMCtmp{dataBytes, zkpBytes}
 
 	toSend := bytes.Buffer{}
 	enc := gob.NewEncoder(&toSend)
@@ -148,7 +140,7 @@ func GenExpReveal(label string, server sync.Server, start time.Time) (DKey, erro
 			return err
 		}
 
-		if err := nmcs[pid].Verify(cp, zkp); err != nil {
+		if err := nmcs[pid].Verify(cp.MarshalBinary(), zkp.MarshalBinary()); err != nil {
 			return err
 		}
 
