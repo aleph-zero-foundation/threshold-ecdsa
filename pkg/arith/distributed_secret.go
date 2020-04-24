@@ -3,11 +3,9 @@ package arith
 import (
 	"bytes"
 	"crypto/rand"
-	"encoding/binary"
 	"encoding/gob"
 	"fmt"
 	"math/big"
-	"time"
 
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/crypto/commitment"
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/crypto/zkpok"
@@ -54,7 +52,7 @@ func (ds *dsecret) Exp() (DKey, error) {
 type adsecret struct {
 	dsecret
 	r   *big.Int
-	egf commitment.ElGamalFactory
+	egf *commitment.ElGamalFactory
 	eg  *commitment.ElGamal
 	egs []*commitment.ElGamal
 }
@@ -69,7 +67,7 @@ func (tds tdsecret) Threshold() uint16 {
 }
 
 // Gen generates a new distributed key with given label
-func Gen(label string, server sync.Server, egf *commitment.ElGamalFactory, start time.Time) (ADSecret, error) {
+func Gen(label string, server sync.Server, egf *commitment.ElGamalFactory, nProc uint16) (ADSecret, error) {
 	var err error
 	// create a secret
 	ads := &adsecret{dsecret: dsecret{label: label, server: server}, egf: egf}
@@ -95,14 +93,15 @@ func Gen(label string, server sync.Server, egf *commitment.ElGamalFactory, start
 	}
 
 	// TODO: reimplement after ZKPs are implemented
-	check := func(_ uint16, data []byte) error {
+	ads.egs = make([]*commitment.ElGamal, nProc)
+	check := func(pid uint16, data []byte) error {
 		var (
-			eg  commitment.ElGamal
+			eg  *commitment.ElGamal
 			zkp zkpok.NoopZKproof
 		)
 		buf := bytes.NewBuffer(data)
 		dec := gob.NewDecoder(buf)
-		if err := dec.Decode(&eg); err != nil {
+		if err := dec.Decode(eg); err != nil {
 			return fmt.Errorf("decode: eg %v", err)
 		}
 		if err := dec.Decode(&zkp); err != nil {
@@ -111,60 +110,15 @@ func Gen(label string, server sync.Server, egf *commitment.ElGamalFactory, start
 		if !zkp.Verify() {
 			return fmt.Errorf("Wrong proof")
 		}
+		ads.egs[pid] = eg
+
 		return nil
 	}
 
-	data, _, err := ads.server.Round(toSendBuf.Bytes(), check, start, 0)
+	err = ads.server.Round([][]byte{toSendBuf.Bytes()}, check)
 	if err != nil {
 		return nil, err
 	}
 
-	ads.egs = make([]*commitment.ElGamal, len(data))
-	buf := &bytes.Buffer{}
-	dec := gob.NewDecoder(buf)
-	for i := range data {
-		if data[i] == nil {
-			continue
-		}
-		ads.egs[i] = &commitment.ElGamal{}
-		buf.Reset()
-		if _, err := buf.Write(data[i]); err != nil {
-			return nil, err
-		}
-		if err := dec.Decode(ads.egs[i]); err != nil {
-			return nil, fmt.Errorf("decode: egs %v", err)
-		}
-	}
-
 	return ads, nil
-}
-
-func poly(t uint16, a0 *big.Int) ([]*big.Int, error) {
-	var err error
-	f := make([]*big.Int, t)
-	for i := range f {
-		if i == 0 {
-			f[i] = a0
-			continue
-		}
-		if i == int(t)-1 {
-			tmp := big.NewInt(1)
-			tmp.Sub(Q, tmp)
-			if f[i], err = rand.Int(randReader, tmp); err != nil {
-				return nil, err
-			}
-			tmp.SetInt64(1)
-			f[i].Add(f[i], tmp)
-
-		}
-		if f[i], err = rand.Int(randReader, Q); err != nil {
-			return nil, err
-		}
-	}
-	return f, nil
-}
-
-func polyEval(f []*big.Int, x *big.Int) *big.Int {
-	// TODO: implement
-	return nil
 }

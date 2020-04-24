@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/gob"
 	"fmt"
-	"time"
 
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/crypto/zkpok"
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/curve"
@@ -15,7 +14,7 @@ import (
 // DKey is a distirbuted key
 type DKey interface {
 	Label() string
-	RevealExp() (group.Elem, error)
+	RevealExp() (curve.Point, error)
 }
 
 // ADKey is an arithmetic distirbuted key
@@ -32,15 +31,15 @@ type TDKey interface {
 
 type dkey struct {
 	secret *dsecret
-	pk     *group.CurvePoint
-	pks    []*group.CurvePoint
+	pk     curve.Point
+	pks    []curve.Point
 }
 
 func (dk *dkey) Label() string {
 	return dk.secret.Label()
 }
 
-func (dk *dkey) RevealExp() (group.Elem, error) {
+func (dk *dkey) RevealExp() (curve.Point, error) {
 	return nil, nil
 }
 
@@ -66,7 +65,7 @@ func (nmc *NMCtmp) Verify(dataBytes, zkpBytes []byte) error {
 }
 
 // GenExpReveal is a method for generating a new distirbuted key
-func GenExpReveal(label string, server sync.Server, start time.Time) (DKey, error) {
+func GenExpReveal(label string, server sync.Server, nProc uint16, group curve.Group) (DKey, error) {
 	// generate a secret
 	secret, err := rand.Int(randReader, Q)
 	if err != nil {
@@ -79,14 +78,12 @@ func GenExpReveal(label string, server sync.Server, start time.Time) (DKey, erro
 	}
 	dkey := &dkey{secret: dsecret}
 
-	dkey.pk = group.NewCurvePoint(dsecret.secret)
+	dkey.pk = group.ScalarBaseMult(dsecret.secret)
 
 	// Round 1: commmit to (g^{a_k}, pi_k)
 	// TODO: replace with a proper zkpok and nmc when it's ready
-	dataBytes, err := dkey.pk.MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
+	dataBytes := group.Marshal(dkey.pk)
+
 	zkp := zkpok.NoopZKproof{}
 	zkpBytes, err := zkp.MarshalBinary()
 	if err != nil {
@@ -101,46 +98,48 @@ func GenExpReveal(label string, server sync.Server, start time.Time) (DKey, erro
 	}
 
 	// TODO: sth we can check here?
-	check := func(_ uint16, _ []byte) error { return nil }
+	nmcs := make([]*NMCtmp, nProc)
+	check := func(pid uint16, data []byte) error {
 
-	data, _, err := server.Round(toSend.Bytes(), check, start, 0)
+		nmcs[pid] = &NMCtmp{}
+		dec := gob.NewDecoder(bytes.NewBuffer(data))
+		if err := dec.Decode(nmcs); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	err = server.Round([][]byte{toSend.Bytes()}, check)
 	if err != nil {
 		return nil, err
-	}
-	nmcs := make([]*NMCtmp, len(data))
-	for i := range data {
-		if data[i] == nil {
-			continue
-		}
-		nmcs[i] = &NMCtmp{}
-		dec := gob.NewDecoder(bytes.NewBuffer(data[i]))
-		if err := dec.Decode(nmcs[i]); err != nil {
-			return nil, err
-		}
 	}
 
 	// Round 2: decommit to (g^{a_k}, pi_k)
 	zkp = zkpok.NoopZKproof{}
 	toSend.Reset()
-	if err := enc.Encode(dkey.pk); err != nil {
-		return nil, err
-	}
 	if err := enc.Encode(zkp); err != nil {
 		return nil, err
 	}
+	if err := enc.Encode(dkey.pk); err != nil {
+		return nil, err
+	}
 
+	dkey.pks = make([]curve.Point, nProc)
 	check = func(pid uint16, data []byte) error {
-		dec := gob.NewDecoder(bytes.NewBuffer(data))
-		cp := &group.CurvePoint{}
-		if err := dec.Decode(cp); err != nil {
-			return err
-		}
+		buf := bytes.NewBuffer(data)
+		dec := gob.NewDecoder(buf)
+
 		zkp := &zkpok.NoopZKproof{}
 		if err := dec.Decode(zkp); err != nil {
 			return err
 		}
 
-		if err := nmcs[pid].Verify(cp.MarshalBinary(), zkp.MarshalBinary()); err != nil {
+		cpBuf := bytes.Buffer{}
+		if _, err := buf.WriteTo(&cpBuf); err != nil {
+			return err
+		}
+		cp, err := group.Unmarshal(cpBuf.Bytes())
+		if err != nil {
 			return err
 		}
 
@@ -148,29 +147,19 @@ func GenExpReveal(label string, server sync.Server, start time.Time) (DKey, erro
 			return fmt.Errorf("Wrong proof")
 		}
 
+		dkey.pks[pid] = cp
+
+		zkpBytesLen := len(data) - len(cpBuf.Bytes())
+		if err := nmcs[pid].Verify(cpBuf.Bytes(), data[:zkpBytesLen]); err != nil {
+			return err
+		}
+
 		return nil
 	}
 
-	data, _, err = server.Round(toSend.Bytes(), check, start, 1)
+	err = server.Round([][]byte{toSend.Bytes()}, check)
 	if err != nil {
 		return nil, err
-	}
-
-	dkey.pks = make([]*group.CurvePoint, len(data))
-	buf := &bytes.Buffer{}
-	dec := gob.NewDecoder(buf)
-	for i := range data {
-		if data[i] == nil {
-			continue
-		}
-		dkey.pks[i] = &group.CurvePoint{}
-		buf.Reset()
-		if _, err := buf.Write(data[i]); err != nil {
-			return nil, err
-		}
-		if err := dec.Decode(dkey.pks[i]); err != nil {
-			return nil, err
-		}
 	}
 
 	// TODO: form global public key
