@@ -19,7 +19,7 @@ const (
 // Server implements
 // TODO explain counting round internally
 type Server interface {
-	Round([]byte, func(uint16, []byte) error) error
+	Round([][]byte, func(uint16, []byte) error) error
 }
 
 type server struct {
@@ -44,7 +44,7 @@ func NewServer(pid, nProc uint16, startTime time.Time, roundTime time.Duration, 
 }
 
 // TODO: don't return any data, grab it during check
-func (s *server) Round(toSend []byte, check func(uint16, []byte) error) error {
+func (s *server) Round(toSend [][]byte, check func(uint16, []byte) error) error {
 	s.roundID++
 	start := s.startTime.Add(time.Duration(s.roundID * int64(s.roundTime)))
 	// TODO: temporary solution for scheduling the start, rewrite this ugly sleep
@@ -102,11 +102,15 @@ func (s *server) Round(toSend []byte, check func(uint16, []byte) error) error {
 	return nil
 }
 
-func (s *server) sendToAll(toSend []byte) error {
-	data := make([]byte, 10+len(toSend))
-	binary.LittleEndian.PutUint16(data[:2], s.pid)
-	binary.LittleEndian.PutUint64(data[2:10], uint64(s.roundID))
-	copy(data[10:], toSend)
+func (s *server) sendToAll(toSend [][]byte) error {
+	var data []byte
+	// Check if we send the same data to all parties
+	if len(toSend) == 1 {
+		data = make([]byte, 10+len(toSend[0]))
+		binary.LittleEndian.PutUint16(data[:2], s.pid)
+		binary.LittleEndian.PutUint64(data[2:10], uint64(s.roundID))
+		copy(data[10:], toSend[0])
+	}
 	wg := sync.WaitGroup{}
 	wg.Add(int(s.nProc) - 1)
 	errors := make([]error, s.nProc)
@@ -123,7 +127,13 @@ func (s *server) sendToAll(toSend []byte) error {
 			}
 			defer conn.Close()
 			conn.TimeoutAfter(timeout)
-			_, err = conn.Write(data)
+			var d []byte
+			if data == nil {
+				d = toSend[pid]
+			} else {
+				d = data
+			}
+			_, err = conn.Write(d)
 			if err != nil {
 				errors[pid] = err
 				return

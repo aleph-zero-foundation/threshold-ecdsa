@@ -8,7 +8,7 @@ import (
 
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/arith"
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/crypto/commitment"
-	"gitlab.com/alephledger/threshold-ecdsa/pkg/group"
+	"gitlab.com/alephledger/threshold-ecdsa/pkg/curve"
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/sync"
 
 	. "github.com/onsi/ginkgo"
