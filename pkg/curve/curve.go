@@ -12,8 +12,10 @@ type Group interface {
 	Gen() Point
 	Add(Point, Point) Point
 	Neutral() Point
+	Neg(Point) Point
 	ScalarMult(Point, *big.Int) Point
 	ScalarBaseMult(*big.Int) Point
+	Equal(Point, Point) bool
 	Marshal(Point) []byte
 	Unmarshal([]byte) (Point, error)
 }
