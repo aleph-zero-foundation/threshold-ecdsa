@@ -3,12 +3,12 @@ package commitment
 import (
 	"encoding/binary"
 	"math/big"
-
-	"gitlab.com/alephledger/threshold-ecdsa/pkg/group"
 )
 
+var secp256k1 = curve.NewSecp256k1Group()
+
 //NewElGamalFactory creates a new ElGamal-type Commitments factory
-func NewElGamalFactory(h group.Elem) *ElGamalFactory {
+func NewElGamalFactory(h curve.Point) *ElGamalFactory {
 	egf := &ElGamalFactory{h: h}
 	egf.neutral = egf.Create(big.NewInt(0), big.NewInt(0))
 	return egf
@@ -16,27 +16,27 @@ func NewElGamalFactory(h group.Elem) *ElGamalFactory {
 
 //ElGamalFactory is a factory for ElGamal-type Commitment
 type ElGamalFactory struct {
-	h       group.Elem
+	h       curve.Point
 	neutral *ElGamal
 }
 
 //NewElGamal creates a new ElGamal-type Commitment
 func NewElGamal(a, b *big.Int) *ElGamal {
-	return &ElGamal{group.NewCurvePoint(a), group.NewCurvePoint(b)}
+	return &ElGamal{secp256k1.ScalarBaseMult(a), secp256k1.ScalarBaseMult(b)}
 }
 
 //ElGamal is an implementation of ElGamal-type Commitments
 type ElGamal struct {
-	first, second group.Elem
+	first, second curve.Point
 }
 
 //Create creates new ElGamal Commitment
 func (e *ElGamalFactory) Create(value, r *big.Int) *ElGamal {
 	return &ElGamal{
-		first: group.NewCurvePoint(big.NewInt(0)).Mult(&group.CGen, r),
-		second: group.NewCurvePoint(big.NewInt(0)).Add(
-			group.NewCurvePoint(big.NewInt(0)).Mult(e.h, r),
-			group.NewCurvePoint(big.NewInt(0)).Mult(&group.CGen, value)),
+		first: secp256k1.ScalarBaseMult(r),
+		second: secp256k1.Add(
+			secp256k1.ScalarMult(e.h, r),
+			secp256k1.ScalarBaseMult(value)),
 	}
 }
 
@@ -52,28 +52,29 @@ func (e *ElGamalFactory) IsNeutral(a *ElGamal) bool {
 
 //Compose composes two ElGamal Commitments
 func (c *ElGamal) Compose(a, b *ElGamal) *ElGamal {
-	c.first.Add(a.first, b.first)
-	c.second.Add(a.second, b.second)
+	secp256k1.Add(a.first, b.first)
+	secp256k1.Add(a.second, b.second)
 	return c
 }
 
 //Exp performs exp operation on ElGamal Commitments
 func (c *ElGamal) Exp(x *ElGamal, n *big.Int) *ElGamal {
-	c.first.Mult(x.first, n)
-	c.second.Mult(x.second, n)
+	secp256k1.ScalarMult(x.first, n)
+	secp256k1.ScalarMult(x.second, n)
 	return c
 }
 
 //Inverse returns inversed element for given ElGamal Commitment
 func (c *ElGamal) Inverse(a *ElGamal) *ElGamal {
-	c.first.Inverse(a.first)
-	c.second.Inverse(a.second)
+	//secp256k1.Neg(a.first)
+	//secp256k1.Neg(a.second)
 	return c
 }
 
 //Cmp compares to ElGamal ElGamals (maybe should be called equal)
 func (*ElGamal) Cmp(a, b *ElGamal) bool {
-	return (a.first).Cmp(a.first, b.first) && (a.second).Cmp(a.second, b.second)
+	//return secp256k1.Equal(a.first, b.first) && secp256k1.Equal(a.second, b.second)
+	return false
 }
 
 //MarshalBinary marshals ElGamal Commitment
