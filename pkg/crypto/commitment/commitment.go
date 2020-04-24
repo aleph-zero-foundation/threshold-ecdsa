@@ -3,6 +3,8 @@ package commitment
 import (
 	"encoding/binary"
 	"math/big"
+
+	"../../curve"
 )
 
 var secp256k1 = curve.NewSecp256k1Group()
@@ -79,8 +81,8 @@ func (*ElGamal) Cmp(a, b *ElGamal) bool {
 
 //MarshalBinary marshals ElGamal Commitment
 func (c *ElGamal) MarshalBinary() ([]byte, error) {
-	firstBytes, _ := c.first.MarshalBinary()
-	secondBytes, _ := c.second.MarshalBinary()
+	firstBytes := secp256k1.Marshal(c.first)
+	secondBytes := secp256k1.Marshal(c.second)
 
 	result := make([]byte, 4, 4+len(firstBytes)+len(secondBytes))
 	binary.LittleEndian.PutUint32(result, uint32(len(firstBytes)))
@@ -94,12 +96,10 @@ func (c *ElGamal) MarshalBinary() ([]byte, error) {
 func (c *ElGamal) UnmarshalBinary(b []byte) error {
 	firstLen := binary.LittleEndian.Uint32(b[0:4])
 
-	tmp := &group.CurvePoint{}
-	tmp.UnmarshalBinary(b[4 : 4+firstLen])
+	tmp, _ := secp256k1.Unmarshal(b[4 : 4+firstLen])
 	c.first = tmp
 
-	tmp = &group.CurvePoint{}
-	tmp.UnmarshalBinary(b[4+firstLen:])
+	tmp, _ = secp256k1.Unmarshal(b[4+firstLen:])
 	c.second = tmp
 
 	return nil
