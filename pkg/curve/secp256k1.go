@@ -21,7 +21,7 @@ type sGroup struct {
 // NewSecp256k1Group returns the impelementation of the group interface with the secp256k1 elliptic curve
 func NewSecp256k1Group() Group {
 	cur := secp256k1.S256()
-	return &sGroup{cur, big.NewInt(0).Sub(cur.N, big.NewInt(1))}
+	return &sGroup{cur, new(big.Int).Sub(cur.N, big.NewInt(1))}
 }
 
 func (g sGroup) Order() *big.Int {
@@ -42,12 +42,12 @@ func (g sGroup) Add(a Point, b Point) Point {
 			resultX = nil
 			resultY = nil
 		} else {
-			resultX = big.NewInt(0).Set(bs.x)
-			resultY = big.NewInt(0).Set(bs.y)
+			resultX = new(big.Int).Set(bs.x)
+			resultY = new(big.Int).Set(bs.y)
 		}
 	} else if bs.x == nil && bs.y == nil {
-		resultX = big.NewInt(0).Set(as.x)
-		resultY = big.NewInt(0).Set(as.y)
+		resultX = new(big.Int).Set(as.x)
+		resultY = new(big.Int).Set(as.y)
 	} else if (as.x.Cmp(bs.x) == 0) && (as.y.Cmp(bs.y) == 0) {
 		resultX, resultY = g.curve.Double(as.x, as.y)
 	} else {
@@ -88,6 +88,7 @@ func (g sGroup) Equal(a Point, b Point) bool {
 	return (as.x.Cmp(bs.x) == 0) && (as.y.Cmp(bs.y) == 0)
 }
 
+//Result for neutral element is [0 0 0 0]
 func (g sGroup) Marshal(a Point) []byte {
 	arr := make([]byte, 4)
 	if a.(sPoint).x == nil {
@@ -107,7 +108,7 @@ func (g sGroup) Unmarshal(b []byte) (Point, error) {
 	if length == 0 {
 		return sPoint{nil, nil}, nil
 	}
-	resultX := big.NewInt(0).SetBytes(b[4 : 4+length])
-	resultY := big.NewInt(0).SetBytes(b[4+length : len(b)])
+	resultX := new(big.Int).SetBytes(b[4 : 4+length])
+	resultY := new(big.Int).SetBytes(b[4+length : len(b)])
 	return sPoint{resultX, resultY}, nil
 }
