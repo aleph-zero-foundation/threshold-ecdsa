@@ -191,6 +191,44 @@ var _ = Describe("Secret Test", func() {
 					})
 				})
 
+				Context("Threshold equals 2", func() {
+					BeforeEach(func() {
+						t = 2
+					})
+					It("Should finish for alice and bob", func() {
+						wg.Add(int(nProc))
+						go func() {
+							defer wg.Done()
+							ads[alice], errors[alice] = arith.Gen(label, syncservs[alice], egf, nProc)
+						}()
+						go func() {
+							defer wg.Done()
+							ads[bob], errors[bob] = arith.Gen(label, syncservs[bob], egf, nProc)
+						}()
+						wg.Wait()
+
+						Expect(errors[alice]).NotTo(HaveOccurred())
+						Expect(errors[bob]).NotTo(HaveOccurred())
+						Expect(ads[alice]).NotTo(BeNil())
+						Expect(ads[bob]).NotTo(BeNil())
+
+						wg.Add(int(nProc))
+						go func() {
+							defer wg.Done()
+							tds[alice], errors[alice] = ads[alice].Reshare(t)
+						}()
+						go func() {
+							defer wg.Done()
+							tds[bob], errors[bob] = ads[bob].Reshare(t)
+						}()
+						wg.Wait()
+
+						Expect(errors[alice]).NotTo(HaveOccurred())
+						Expect(errors[bob]).NotTo(HaveOccurred())
+						Expect(tds[alice]).NotTo(BeNil())
+						Expect(tds[bob]).NotTo(BeNil())
+					})
+				})
 			})
 		})
 	})

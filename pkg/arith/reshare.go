@@ -193,7 +193,7 @@ func (ads *adsecret) Reshare(t uint16) (TDSecret, error) {
 	randEval := make([]*big.Int, nProc)
 	egEvalRefresh := make([]*commitment.ElGamal, nProc)
 	for pid := range eval {
-		eval[pid] = polyEval(f, big.NewInt(int64(pid)))
+		eval[pid] = polyEval(f, big.NewInt(int64(pid)), Q)
 		if randEval[pid], err = rand.Int(randReader, Q); err != nil {
 			return nil, err
 		}
@@ -281,6 +281,7 @@ func (ads *adsecret) Reshare(t uint16) (TDSecret, error) {
 		share.Add(share, e)
 		shareRand.Add(shareRand, recvRand[pid])
 	}
+	share.Mod(share, Q)
 	for _, egs := range allEgEvalRefresh {
 		comms := egs
 		if comms == nil {
@@ -365,12 +366,13 @@ func poly(t uint16, a0 *big.Int) ([]*big.Int, error) {
 	return f, nil
 }
 
-func polyEval(f []*big.Int, x *big.Int) *big.Int {
+func polyEval(f []*big.Int, x *big.Int, q *big.Int) *big.Int {
 	deg := len(f) - 1
 	eval := new(big.Int).Set(f[deg])
 	for i := deg - 1; i >= 0; i-- {
 		eval.Mul(eval, x)
 		eval.Add(eval, f[i])
 	}
+	eval.Mod(eval, q)
 	return eval
 }
