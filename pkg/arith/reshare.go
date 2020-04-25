@@ -358,6 +358,7 @@ func poly(t uint16, a0 *big.Int) ([]*big.Int, error) {
 			tmp.SetInt64(1)
 			f[i].Add(f[i], tmp)
 
+			continue
 		}
 		if f[i], err = rand.Int(randReader, Q); err != nil {
 			return nil, err
