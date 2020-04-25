@@ -14,7 +14,7 @@ import (
 
 // Reshare transforms the arithmetic secret into a threshold secret
 func (ads *adsecret) Reshare(t uint16) (TDSecret, error) {
-	if t < 2 {
+	if t < 1 {
 		return nil, fmt.Errorf("Cannot reshare with threshold %v", t)
 	}
 
@@ -23,10 +23,10 @@ func (ads *adsecret) Reshare(t uint16) (TDSecret, error) {
 
 	// STEP 1. Publish a proof of knowledge of ads.secret and ads.r
 	toSendBuf := bytes.Buffer{}
-	toSend := [][]byte{}
+	toSend := [][]byte{nil}
 	enc := gob.NewEncoder(&toSendBuf)
 	// TODO: replace the following commitment and check with EGKnow
-	egknow := &zkpok.NoopZKproof{}
+	egknow := zkpok.NoopZKproof{}
 	if err := enc.Encode(egknow); err != nil {
 		return nil, err
 	}
@@ -58,8 +58,8 @@ func (ads *adsecret) Reshare(t uint16) (TDSecret, error) {
 	}
 
 	// STEP 3. Compute commitments to coefs of f, EGKnow, and EGRefresh
-	egknow = &zkpok.NoopZKproof{}
-	egrefresh := &zkpok.NoopZKproof{}
+	egknow = zkpok.NoopZKproof{}
+	egrefresh := zkpok.NoopZKproof{}
 	coefComms := make([]*commitment.ElGamal, t)
 	rands := make([]*big.Int, t)
 	for i := range coefComms {
@@ -93,11 +93,12 @@ func (ads *adsecret) Reshare(t uint16) (TDSecret, error) {
 		return nmc, nil
 
 	}
-	nmc, err := buildNMC(coefComms, egknow, egrefresh)
+	nmc, err := buildNMC(coefComms, &egknow, &egrefresh)
 	if err != nil {
 		return nil, err
 	}
 	toSendBuf.Reset()
+	enc = gob.NewEncoder(&toSendBuf)
 	if err := enc.Encode(nmc); err != nil {
 		return nil, err
 	}
@@ -119,29 +120,30 @@ func (ads *adsecret) Reshare(t uint16) (TDSecret, error) {
 
 	// STEP 5. Decommit to values from Step 4.
 	toSendBuf.Reset()
+	enc = gob.NewEncoder(&toSendBuf)
 	if err := enc.Encode(egknow); err != nil {
 		return nil, err
 	}
 	if err := enc.Encode(egrefresh); err != nil {
 		return nil, err
 	}
-	for _, c := range nmcs {
+	for _, c := range coefComms {
 		if err := enc.Encode(c); err != nil {
 			return nil, err
 		}
 	}
 
 	check = func(pid uint16, data []byte) error {
+		var egknow zkpok.NoopZKproof
 		dec := gob.NewDecoder(bytes.NewBuffer(data))
-		egknow := &zkpok.NoopZKproof{}
-		if err := dec.Decode(egknow); err != nil {
+		if err := dec.Decode(&egknow); err != nil {
 			return err
 		}
 		if !egknow.Verify() {
 			return fmt.Errorf("Wrong egknow proof")
 		}
-		egrefresh := &zkpok.NoopZKproof{}
-		if err := dec.Decode(egrefresh); err != nil {
+		var egrefresh zkpok.NoopZKproof
+		if err := dec.Decode(&egrefresh); err != nil {
 			return err
 		}
 		if !egrefresh.Verify() {
@@ -155,7 +157,7 @@ func (ads *adsecret) Reshare(t uint16) (TDSecret, error) {
 			}
 		}
 
-		nmc, err := buildNMC(coefComms, egknow, egrefresh)
+		nmc, err := buildNMC(coefComms, &egknow, &egrefresh)
 		if err != nil {
 			return err
 		}
@@ -174,7 +176,7 @@ func (ads *adsecret) Reshare(t uint16) (TDSecret, error) {
 
 	// STEP 6. Compute commitments to evaluations f(l) for l in [N]
 	egEval := make([]*commitment.ElGamal, nProc)
-	var tmp *commitment.ElGamal
+	tmp := ads.egf.Neutral()
 	for pid := 0; pid < nProc; pid++ {
 		egEval[pid] = ads.egf.Neutral()
 		exp := big.NewInt(int64(pid))
@@ -199,9 +201,10 @@ func (ads *adsecret) Reshare(t uint16) (TDSecret, error) {
 	}
 
 	toSendBuf.Reset()
+	enc = gob.NewEncoder(&toSendBuf)
 	for _, c := range egEvalRefresh {
 		// TODO: you know what
-		egrefresh = &zkpok.NoopZKproof{}
+		egrefresh = zkpok.NoopZKproof{}
 		if err := enc.Encode(egrefresh); err != nil {
 			return nil, err
 		}
@@ -215,8 +218,8 @@ func (ads *adsecret) Reshare(t uint16) (TDSecret, error) {
 		dec := gob.NewDecoder(bytes.NewBuffer(data))
 		allEgEvalRefresh[pid] = make([]*commitment.ElGamal, nProc)
 		for i := range allEgEvalRefresh[pid] {
-			egrefresh := &zkpok.NoopZKproof{}
-			if err := dec.Decode(egrefresh); err != nil {
+			var egrefresh zkpok.NoopZKproof
+			if err := dec.Decode(&egrefresh); err != nil {
 				return err
 			}
 			if !egrefresh.Verify() {
@@ -224,7 +227,7 @@ func (ads *adsecret) Reshare(t uint16) (TDSecret, error) {
 			}
 
 			allEgEvalRefresh[pid][i] = &commitment.ElGamal{}
-			if err := dec.Decode(allEgEvalRefresh[i]); err != nil {
+			if err := dec.Decode(allEgEvalRefresh[pid][i]); err != nil {
 				return err
 			}
 		}
@@ -271,7 +274,7 @@ func (ads *adsecret) Reshare(t uint16) (TDSecret, error) {
 	for pid, e := range recvEvals {
 		shareComms[pid] = ads.egf.Neutral()
 		if e == nil {
-			share.Add(share, recvEvals[pid])
+			share.Add(share, eval[pid])
 			shareRand.Add(shareRand, randEval[pid])
 			continue
 		}
@@ -291,13 +294,14 @@ func (ads *adsecret) Reshare(t uint16) (TDSecret, error) {
 
 	// STEP 10. Commit to coefs of F and EGRefresh
 	toSendBuf.Reset()
+	enc = gob.NewEncoder(&toSendBuf)
 	var shareRandRefresh *big.Int
 	if shareRandRefresh, err = rand.Int(randReader, Q); err != nil {
 		return nil, err
 	}
 	shareComm := ads.egf.Create(share, shareRandRefresh)
 	// TODO: ...
-	egrefresh = &zkpok.NoopZKproof{}
+	egrefresh = zkpok.NoopZKproof{}
 	if err := enc.Encode(egrefresh); err != nil {
 		return nil, err
 	}
@@ -309,8 +313,8 @@ func (ads *adsecret) Reshare(t uint16) (TDSecret, error) {
 		buf := bytes.NewBuffer(data)
 		dec := gob.NewDecoder(buf)
 		var (
-			egrefresh *zkpok.NoopZKproof
-			eg        *commitment.ElGamal
+			egrefresh zkpok.NoopZKproof
+			eg        commitment.ElGamal
 		)
 		if err := dec.Decode(&egrefresh); err != nil {
 			return fmt.Errorf("decode: egrefresh %v", err)
@@ -322,7 +326,7 @@ func (ads *adsecret) Reshare(t uint16) (TDSecret, error) {
 			return fmt.Errorf("Wrong proof")
 		}
 		// After checking that eg agrees with previous commitment, replace the old one with it
-		shareComms[pid] = eg
+		shareComms[pid] = &eg
 
 		return nil
 	}
@@ -362,6 +366,11 @@ func poly(t uint16, a0 *big.Int) ([]*big.Int, error) {
 }
 
 func polyEval(f []*big.Int, x *big.Int) *big.Int {
-	// TODO: implement
-	return nil
+	deg := len(f) - 1
+	eval := new(big.Int).Set(f[deg])
+	for i := deg - 1; i >= 0; i-- {
+		eval.Mul(eval, x)
+		eval.Add(eval, f[i])
+	}
+	return eval
 }

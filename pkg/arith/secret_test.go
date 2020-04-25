@@ -65,7 +65,7 @@ var _ = Describe("Secret Test", func() {
 			label = "x"
 		})
 
-		Describe("Generating a distributed secret with arith.Gen", func() {
+		Describe("Generating arithmetic distributed secrets with arith.Gen", func() {
 
 			var (
 				ads  []arith.ADSecret
@@ -101,7 +101,7 @@ var _ = Describe("Secret Test", func() {
 			})
 		})
 
-		Describe("Generating a distributed public key with arith.GenExpReveal", func() {
+		Describe("Generating distributed public keys with arith.GenExpReveal", func() {
 			var (
 				dks []arith.DKey
 			)
@@ -129,6 +129,68 @@ var _ = Describe("Secret Test", func() {
 					Expect(errors[bob]).NotTo(HaveOccurred())
 
 				})
+			})
+		})
+
+		Describe("Resharing arithmetic distributed secrets", func() {
+
+			var (
+				t    uint16
+				ads  []arith.ADSecret
+				tds  []arith.TDSecret
+				egsk curve.Point
+				egf  *commitment.ElGamalFactory
+			)
+
+			Context("Alice and bob are honest and alive", func() {
+
+				BeforeEach(func() {
+					ads = make([]arith.ADSecret, nProc)
+					tds = make([]arith.TDSecret, nProc)
+					errors = make([]error, nProc)
+					egsk = group.ScalarBaseMult(big.NewInt(rand.Int63()))
+					egf = commitment.NewElGamalFactory(egsk)
+				})
+
+				Context("Threshold equals 1", func() {
+					BeforeEach(func() {
+						t = 1
+					})
+					It("Should finish for alice and bob", func() {
+						wg.Add(int(nProc))
+						go func() {
+							defer wg.Done()
+							ads[alice], errors[alice] = arith.Gen(label, syncservs[alice], egf, nProc)
+						}()
+						go func() {
+							defer wg.Done()
+							ads[bob], errors[bob] = arith.Gen(label, syncservs[bob], egf, nProc)
+						}()
+						wg.Wait()
+
+						Expect(errors[alice]).NotTo(HaveOccurred())
+						Expect(errors[bob]).NotTo(HaveOccurred())
+						Expect(ads[alice]).NotTo(BeNil())
+						Expect(ads[bob]).NotTo(BeNil())
+
+						wg.Add(int(nProc))
+						go func() {
+							defer wg.Done()
+							tds[alice], errors[alice] = ads[alice].Reshare(t)
+						}()
+						go func() {
+							defer wg.Done()
+							tds[bob], errors[bob] = ads[bob].Reshare(t)
+						}()
+						wg.Wait()
+
+						Expect(errors[alice]).NotTo(HaveOccurred())
+						Expect(errors[bob]).NotTo(HaveOccurred())
+						Expect(tds[alice]).NotTo(BeNil())
+						Expect(tds[bob]).NotTo(BeNil())
+					})
+				})
+
 			})
 		})
 	})
