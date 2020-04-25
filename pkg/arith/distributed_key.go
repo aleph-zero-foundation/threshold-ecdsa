@@ -3,6 +3,7 @@ package arith
 import (
 	"bytes"
 	"crypto/rand"
+	"encoding/binary"
 	"encoding/gob"
 	"fmt"
 
@@ -101,11 +102,12 @@ func GenExpReveal(label string, server sync.Server, nProc uint16, group curve.Gr
 	nmcs := make([]*NMCtmp, nProc)
 	check := func(pid uint16, data []byte) error {
 
-		nmcs[pid] = &NMCtmp{}
+		var nmc NMCtmp
 		dec := gob.NewDecoder(bytes.NewBuffer(data))
-		if err := dec.Decode(nmcs); err != nil {
+		if err := dec.Decode(&nmc); err != nil {
 			return err
 		}
+		nmcs[pid] = &nmc
 		return nil
 	}
 
@@ -115,30 +117,27 @@ func GenExpReveal(label string, server sync.Server, nProc uint16, group curve.Gr
 	}
 
 	// Round 2: decommit to (g^{a_k}, pi_k)
-	zkp = zkpok.NoopZKproof{}
 	toSend.Reset()
-	if err := enc.Encode(zkp); err != nil {
+	zkp = zkpok.NoopZKproof{}
+	zkpBytes, _ = zkp.MarshalBinary()
+	buf := make([]byte, 2+len(zkpBytes))
+	binary.LittleEndian.PutUint16(buf[:2], uint16(len(zkpBytes)))
+	copy(buf[2:], zkpBytes)
+
+	if _, err = toSend.Write(buf); err != nil {
 		return nil, err
 	}
-	if err := enc.Encode(dkey.pk); err != nil {
+	if _, err = toSend.Write(group.Marshal(dkey.pk)); err != nil {
 		return nil, err
 	}
 
 	dkey.pks = make([]curve.Point, nProc)
 	check = func(pid uint16, data []byte) error {
-		buf := bytes.NewBuffer(data)
-		dec := gob.NewDecoder(buf)
-
+		zkpBytesLen := binary.LittleEndian.Uint16(data[:2])
 		zkp := &zkpok.NoopZKproof{}
-		if err := dec.Decode(zkp); err != nil {
-			return err
-		}
+		zkp.UnmarshalBinary(data[2 : 2+zkpBytesLen])
 
-		cpBuf := bytes.Buffer{}
-		if _, err := buf.WriteTo(&cpBuf); err != nil {
-			return err
-		}
-		cp, err := group.Unmarshal(cpBuf.Bytes())
+		cp, err := group.Unmarshal(data[2+zkpBytesLen:])
 		if err != nil {
 			return err
 		}
@@ -147,12 +146,11 @@ func GenExpReveal(label string, server sync.Server, nProc uint16, group curve.Gr
 			return fmt.Errorf("Wrong proof")
 		}
 
-		dkey.pks[pid] = cp
-
-		zkpBytesLen := len(data) - len(cpBuf.Bytes())
-		if err := nmcs[pid].Verify(cpBuf.Bytes(), data[:zkpBytesLen]); err != nil {
+		if err := nmcs[pid].Verify(data[2+zkpBytesLen:], data[2:2+zkpBytesLen]); err != nil {
 			return err
 		}
+
+		dkey.pks[pid] = cp
 
 		return nil
 	}

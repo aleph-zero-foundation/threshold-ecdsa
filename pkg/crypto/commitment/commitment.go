@@ -90,6 +90,8 @@ func (c *ElGamal) MarshalBinary() ([]byte, error) {
 
 //UnmarshalBinary unmarshals ElGamal Commitment
 func (c *ElGamal) UnmarshalBinary(b []byte) error {
+	c.curve = curve.NewSecp256k1Group()
+
 	firstLen := binary.LittleEndian.Uint32(b[0:4])
 
 	tmp, _ := c.curve.Unmarshal(b[4 : 4+firstLen])

@@ -96,12 +96,12 @@ func Gen(label string, server sync.Server, egf *commitment.ElGamalFactory, nProc
 	ads.egs = make([]*commitment.ElGamal, nProc)
 	check := func(pid uint16, data []byte) error {
 		var (
-			eg  *commitment.ElGamal
+			eg  commitment.ElGamal
 			zkp zkpok.NoopZKproof
 		)
 		buf := bytes.NewBuffer(data)
 		dec := gob.NewDecoder(buf)
-		if err := dec.Decode(eg); err != nil {
+		if err := dec.Decode(&eg); err != nil {
 			return fmt.Errorf("decode: eg %v", err)
 		}
 		if err := dec.Decode(&zkp); err != nil {
@@ -110,7 +110,7 @@ func Gen(label string, server sync.Server, egf *commitment.ElGamalFactory, nProc
 		if !zkp.Verify() {
 			return fmt.Errorf("Wrong proof")
 		}
-		ads.egs[pid] = eg
+		ads.egs[pid] = &eg
 
 		return nil
 	}
