@@ -13,7 +13,7 @@ import (
 )
 
 // Reshare transforms the arithmetic secret into a threshold secret
-func (ads *adsecret) Reshare(t uint16) (TDSecret, error) {
+func (ads *ADSecret) Reshare(t uint16) (*TDSecret, error) {
 	if t < 1 {
 		return nil, fmt.Errorf("Cannot reshare with threshold %v", t)
 	}
@@ -332,7 +332,7 @@ func (ads *adsecret) Reshare(t uint16) (TDSecret, error) {
 		return nil
 	}
 
-	tds := &tdsecret{*ads, t}
+	tds := &TDSecret{*ads, t}
 	ads.secret = share
 	ads.r = shareRandRefresh
 	ads.eg = shareComm

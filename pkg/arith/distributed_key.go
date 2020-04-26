@@ -13,39 +13,36 @@ import (
 )
 
 // DKey is a distirbuted key
-type DKey interface {
-	Label() string
-	RevealExp() (curve.Point, error)
-}
-
-// ADKey is an arithmetic distirbuted key
-type ADKey interface {
-	DKey
-	Reshare(uint16) (TDKey, error)
-}
-
-// TDKey is a thresholded distirbuted key
-type TDKey interface {
-	DKey
-	Threshold() uint16
-}
-
-type dkey struct {
-	secret *dsecret
+type DKey struct {
+	secret *DSecret
 	pk     curve.Point
 	pks    []curve.Point
 }
 
-func (dk *dkey) Label() string {
+// Label returns the name of the variable
+func (dk *DKey) Label() string {
 	return dk.secret.Label()
 }
 
-func (dk *dkey) RevealExp() (curve.Point, error) {
+// RevealExp computes the common public key which share is kept in this key
+func (dk *DKey) RevealExp() (curve.Point, error) {
 	return nil, nil
 }
 
-type adkey struct {
-	secret adsecret
+// ADKey is an arithmetic distirbuted key
+type ADKey struct {
+	secret ADSecret
+}
+
+// TDKey is a thresholded distirbuted key
+type TDKey struct {
+	ADKey
+	t uint16
+}
+
+// Threshold returns the number of parties that must collude to reveal the secret
+func (tdk TDKey) Threshold() uint16 {
+	return tdk.t
 }
 
 // NMCtmp is a temporary placeholder
@@ -66,24 +63,24 @@ func (nmc *NMCtmp) Verify(dataBytes, zkpBytes []byte) error {
 }
 
 // GenExpReveal is a method for generating a new distirbuted key
-func GenExpReveal(label string, server sync.Server, nProc uint16, group curve.Group) (DKey, error) {
+func GenExpReveal(label string, server sync.Server, nProc uint16, group curve.Group) (*DKey, error) {
 	// generate a secret
 	secret, err := rand.Int(randReader, Q)
 	if err != nil {
 		return nil, err
 	}
-	dsecret := &dsecret{
+	DSecret := &DSecret{
 		label:  label,
 		secret: secret,
 		server: server,
 	}
-	dkey := &dkey{secret: dsecret}
+	DKey := &DKey{secret: DSecret}
 
-	dkey.pk = group.ScalarBaseMult(dsecret.secret)
+	DKey.pk = group.ScalarBaseMult(DSecret.secret)
 
 	// Round 1: commmit to (g^{a_k}, pi_k)
 	// TODO: replace with a proper zkpok and nmc when it's ready
-	dataBytes := group.Marshal(dkey.pk)
+	dataBytes := group.Marshal(DKey.pk)
 
 	zkp := zkpok.NoopZKproof{}
 	zkpBytes, err := zkp.MarshalBinary()
@@ -127,11 +124,11 @@ func GenExpReveal(label string, server sync.Server, nProc uint16, group curve.Gr
 	if _, err = toSend.Write(buf); err != nil {
 		return nil, err
 	}
-	if _, err = toSend.Write(group.Marshal(dkey.pk)); err != nil {
+	if _, err = toSend.Write(group.Marshal(DKey.pk)); err != nil {
 		return nil, err
 	}
 
-	dkey.pks = make([]curve.Point, nProc)
+	DKey.pks = make([]curve.Point, nProc)
 	check = func(pid uint16, data []byte) error {
 		zkpBytesLen := binary.LittleEndian.Uint16(data[:2])
 		zkp := &zkpok.NoopZKproof{}
@@ -150,7 +147,7 @@ func GenExpReveal(label string, server sync.Server, nProc uint16, group curve.Gr
 			return err
 		}
 
-		dkey.pks[pid] = cp
+		DKey.pks[pid] = cp
 
 		return nil
 	}
@@ -162,5 +159,5 @@ func GenExpReveal(label string, server sync.Server, nProc uint16, group curve.Gr
 
 	// TODO: form global public key
 
-	return dkey, nil
+	return DKey, nil
 }

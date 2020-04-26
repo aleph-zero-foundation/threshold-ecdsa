@@ -68,7 +68,7 @@ var _ = Describe("Secret Test", func() {
 		Describe("Generating arithmetic distributed secrets with arith.Gen", func() {
 
 			var (
-				ads  []arith.ADSecret
+				ads  []*arith.ADSecret
 				egsk curve.Point
 				egf  *commitment.ElGamalFactory
 			)
@@ -76,7 +76,7 @@ var _ = Describe("Secret Test", func() {
 			Context("Alice and bob are honest and alive", func() {
 
 				BeforeEach(func() {
-					ads = make([]arith.ADSecret, nProc)
+					ads = make([]*arith.ADSecret, nProc)
 					errors = make([]error, nProc)
 					egsk = group.ScalarBaseMult(big.NewInt(rand.Int63()))
 					egf = commitment.NewElGamalFactory(egsk)
@@ -103,13 +103,13 @@ var _ = Describe("Secret Test", func() {
 
 		Describe("Generating distributed public keys with arith.GenExpReveal", func() {
 			var (
-				dks []arith.DKey
+				dks []*arith.DKey
 			)
 
 			Context("Alice and bob are honest and alive", func() {
 
 				BeforeEach(func() {
-					dks = make([]arith.DKey, nProc)
+					dks = make([]*arith.DKey, nProc)
 					errors = make([]error, nProc)
 				})
 
@@ -136,8 +136,8 @@ var _ = Describe("Secret Test", func() {
 
 			var (
 				t    uint16
-				ads  []arith.ADSecret
-				tds  []arith.TDSecret
+				ads  []*arith.ADSecret
+				tds  []*arith.TDSecret
 				egsk curve.Point
 				egf  *commitment.ElGamalFactory
 			)
@@ -145,8 +145,8 @@ var _ = Describe("Secret Test", func() {
 			Context("Alice and bob are honest and alive", func() {
 
 				BeforeEach(func() {
-					ads = make([]arith.ADSecret, nProc)
-					tds = make([]arith.TDSecret, nProc)
+					ads = make([]*arith.ADSecret, nProc)
+					tds = make([]*arith.TDSecret, nProc)
 					errors = make([]error, nProc)
 					egsk = group.ScalarBaseMult(big.NewInt(rand.Int63()))
 					egf = commitment.NewElGamalFactory(egsk)

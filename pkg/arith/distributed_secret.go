@@ -13,64 +13,52 @@ import (
 )
 
 // DSecret is a distributed secret
-type DSecret interface {
-	Label() string
-	Reveal() (*big.Int, error)
-	Exp() (DKey, error)
-}
-
-// ADSecret is an arithmetic distirbuted secret
-type ADSecret interface {
-	DSecret
-	Reshare(uint16) (TDSecret, error)
-}
-
-// TDSecret is a thresholded distributed secret
-type TDSecret interface {
-	DSecret
-	Threshold() uint16
-}
-
-type dsecret struct {
+type DSecret struct {
 	label  string
 	secret *big.Int
 	server sync.Server
 }
 
-func (ds *dsecret) Label() string {
+// Label returns the name of the variable
+func (ds *DSecret) Label() string {
 	return ds.label
 }
 
-func (ds *dsecret) Reveal() (*big.Int, error) {
+// Reveal returns the secret kept in this variable
+func (ds *DSecret) Reveal() (*big.Int, error) {
 	return nil, nil
 }
 
-func (ds *dsecret) Exp() (DKey, error) {
+// Exp computes a common public key and its share related to this secret
+func (ds *DSecret) Exp() (*DKey, error) {
 	return nil, nil
 }
 
-type adsecret struct {
-	dsecret
+// ADSecret is an arithmetic distirbuted secret
+type ADSecret struct {
+	DSecret
 	r   *big.Int
 	egf *commitment.ElGamalFactory
 	eg  *commitment.ElGamal
 	egs []*commitment.ElGamal
 }
 
-type tdsecret struct {
-	adsecret
+// TDSecret is a thresholded distributed secret
+type TDSecret struct {
+	ADSecret
 	t uint16
 }
 
-func (tds tdsecret) Threshold() uint16 {
+// Threshold returns the number of parties that must collude to reveal the secret
+func (tds TDSecret) Threshold() uint16 {
 	return tds.t
 }
 
 // Gen generates a new distributed key with given label
-func Gen(label string, server sync.Server, egf *commitment.ElGamalFactory, nProc uint16) (ADSecret, error) {
+func Gen(label string, server sync.Server, egf *commitment.ElGamalFactory, nProc uint16) (*ADSecret, error) {
 	var err error
 	// create a secret
-	ads := &adsecret{dsecret: dsecret{label: label, server: server}, egf: egf}
+	ads := &ADSecret{DSecret: DSecret{label: label, server: server}, egf: egf}
 	if ads.secret, err = rand.Int(randReader, Q); err != nil {
 		return nil, err
 	}
