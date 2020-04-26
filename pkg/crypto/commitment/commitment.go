@@ -10,8 +10,8 @@ import (
 //NewElGamalFactory creates a new ElGamal-type Commitments factory
 func NewElGamalFactory(h curve.Point) *ElGamalFactory {
 	egf := &ElGamalFactory{h: h}
-	egf.neutral = egf.Create(big.NewInt(0), big.NewInt(0))
 	egf.curve = curve.NewSecp256k1Group()
+	egf.neutral = egf.Create(big.NewInt(0), big.NewInt(0))
 	return egf
 }
 
@@ -51,22 +51,22 @@ func (e *ElGamalFactory) IsNeutral(a *ElGamal) bool {
 
 //Compose composes two ElGamal Commitments
 func (c *ElGamal) Compose(a, b *ElGamal) *ElGamal {
-	c.curve.Add(a.first, b.first)
-	c.curve.Add(a.second, b.second)
+	c.first = c.curve.Add(a.first, b.first)
+	c.second = c.curve.Add(a.second, b.second)
 	return c
 }
 
 //Exp performs exp operation on ElGamal Commitments
 func (c *ElGamal) Exp(x *ElGamal, n *big.Int) *ElGamal {
-	c.curve.ScalarMult(x.first, n)
-	c.curve.ScalarMult(x.second, n)
+	c.first = c.curve.ScalarMult(x.first, n)
+	c.second = c.curve.ScalarMult(x.second, n)
 	return c
 }
 
 //Inverse returns inversed element for given ElGamal Commitment
 func (c *ElGamal) Inverse(a *ElGamal) *ElGamal {
-	c.curve.Neg(a.first)
-	c.curve.Neg(a.second)
+	c.first = c.curve.Neg(a.first)
+	c.second = c.curve.Neg(a.second)
 	return c
 }
 
