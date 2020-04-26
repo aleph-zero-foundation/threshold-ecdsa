@@ -23,7 +23,7 @@ var _ = Describe("Commitment Test", func() {
 		h = commCreator.Create(big.NewInt(7), big.NewInt(11))
 	})
 	It("Cmp Diff Test", func() {
-		result := commCreator.Create(big.NewInt(0), big.NewInt(0)).Cmp(g, h)
+		result := commCreator.Create(new(big.Int), new(big.Int)).Cmp(g, h)
 		Expect(result).To(BeFalse())
 	})
 	It("Cmp Same Test", func() {
@@ -32,18 +32,19 @@ var _ = Describe("Commitment Test", func() {
 		Expect(result).To(BeTrue())
 	})
 	It("Compose Test", func() {
-		result := commCreator.Create(big.NewInt(0), big.NewInt(0)).Compose(g, h)
+		result := commCreator.Create(new(big.Int), new(big.Int)).Compose(g, h)
 		cmpResult := g.Cmp(result, commCreator.Create(big.NewInt(10), big.NewInt(16)))
 		Expect(cmpResult).To(BeTrue())
 	})
 	It("Exp Test", func() {
-		result := commCreator.Create(big.NewInt(0), big.NewInt(0)).Exp(g, big.NewInt(13))
+		result := commCreator.Create(new(big.Int), new(big.Int)).Exp(g, big.NewInt(13))
 		cmpResult := g.Cmp(result, commCreator.Create(big.NewInt(39), big.NewInt(65)))
 		Expect(cmpResult).To(BeTrue())
 	})
 	It("Inverse Test", func() {
-		result := commCreator.Create(big.NewInt(0), big.NewInt(0)).Inverse(g)
-		cmpResult := g.Cmp(result, commCreator.Create(big.NewInt(-3), big.NewInt(-5)))
+		result := commCreator.Create(new(big.Int), new(big.Int)).Inverse(g)
+		ord, _ := new(big.Int).SetString("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141", 16)
+		cmpResult := g.Cmp(result, commCreator.Create(new(big.Int).Sub(ord, big.NewInt(3)), new(big.Int).Sub(ord, big.NewInt(5))))
 		Expect(cmpResult).To(BeTrue())
 	})
 	It("Marshal-Unmarshal Test", func() {
