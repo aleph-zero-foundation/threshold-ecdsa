@@ -8,7 +8,7 @@ import (
 
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/arith"
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/crypto/commitment"
-	"gitlab.com/alephledger/threshold-ecdsa/pkg/group"
+	"gitlab.com/alephledger/threshold-ecdsa/pkg/curve"
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/sync"
 
 	. "github.com/onsi/ginkgo"
@@ -29,6 +29,7 @@ var _ = Describe("Secret Test", func() {
 		label     string
 		wg        stdsync.WaitGroup
 		errors    []error
+		group     curve.Group
 	)
 
 	JustBeforeEach(func() {
@@ -36,7 +37,7 @@ var _ = Describe("Secret Test", func() {
 		netservs = tests.NewNetwork(int(nProc))
 		syncservs = make([]sync.Server, int(nProc))
 		for i := uint16(0); i < nProc; i++ {
-			syncservs[i] = sync.NewServer(i, nProc, roundTime, netservs[i])
+			syncservs[i] = sync.NewServer(i, nProc, start, roundTime, netservs[i])
 		}
 	})
 
@@ -44,6 +45,7 @@ var _ = Describe("Secret Test", func() {
 		start = time.Now().Add(time.Millisecond * 10)
 		roundTime = 100 * time.Millisecond
 		rand.Seed(1729)
+		group = curve.NewSecp256k1Group()
 	})
 
 	JustAfterEach(func() {
@@ -63,20 +65,20 @@ var _ = Describe("Secret Test", func() {
 			label = "x"
 		})
 
-		Describe("Generating a distributed secret with arith.Gen", func() {
+		Describe("Generating arithmetic distributed secrets with arith.Gen", func() {
 
 			var (
-				ads  []arith.ADSecret
-				egsk *group.CurvePoint
+				ads  []*arith.ADSecret
+				egsk curve.Point
 				egf  *commitment.ElGamalFactory
 			)
 
 			Context("Alice and bob are honest and alive", func() {
 
 				BeforeEach(func() {
-					ads = make([]arith.ADSecret, nProc)
+					ads = make([]*arith.ADSecret, nProc)
 					errors = make([]error, nProc)
-					egsk = group.NewCurvePoint(big.NewInt(rand.Int63()))
+					egsk = group.ScalarBaseMult(big.NewInt(rand.Int63()))
 					egf = commitment.NewElGamalFactory(egsk)
 				})
 
@@ -84,11 +86,11 @@ var _ = Describe("Secret Test", func() {
 					wg.Add(int(nProc))
 					go func() {
 						defer wg.Done()
-						ads[alice], errors[alice] = arith.Gen(label, syncservs[alice], egf, start)
+						ads[alice], errors[alice] = arith.Gen(label, syncservs[alice], egf, nProc)
 					}()
 					go func() {
 						defer wg.Done()
-						ads[bob], errors[bob] = arith.Gen(label, syncservs[bob], egf, start)
+						ads[bob], errors[bob] = arith.Gen(label, syncservs[bob], egf, nProc)
 					}()
 					wg.Wait()
 
@@ -99,15 +101,15 @@ var _ = Describe("Secret Test", func() {
 			})
 		})
 
-		Describe("Generating a distributed public key with arith.GenExpReveal", func() {
+		Describe("Generating distributed public keys with arith.GenExpReveal", func() {
 			var (
-				dks []arith.DKey
+				dks []*arith.DKey
 			)
 
 			Context("Alice and bob are honest and alive", func() {
 
 				BeforeEach(func() {
-					dks = make([]arith.DKey, nProc)
+					dks = make([]*arith.DKey, nProc)
 					errors = make([]error, nProc)
 				})
 
@@ -115,17 +117,117 @@ var _ = Describe("Secret Test", func() {
 					wg.Add(int(nProc))
 					go func() {
 						defer wg.Done()
-						dks[alice], errors[alice] = arith.GenExpReveal(label, syncservs[alice], start)
+						dks[alice], errors[alice] = arith.GenExpReveal(label, syncservs[alice], nProc, group)
 					}()
 					go func() {
 						defer wg.Done()
-						dks[bob], errors[bob] = arith.GenExpReveal(label, syncservs[bob], start)
+						dks[bob], errors[bob] = arith.GenExpReveal(label, syncservs[bob], nProc, group)
 					}()
 					wg.Wait()
 
 					Expect(errors[alice]).NotTo(HaveOccurred())
 					Expect(errors[bob]).NotTo(HaveOccurred())
 
+				})
+			})
+		})
+
+		Describe("Resharing arithmetic distributed secrets", func() {
+
+			var (
+				t    uint16
+				ads  []*arith.ADSecret
+				tds  []*arith.TDSecret
+				egsk curve.Point
+				egf  *commitment.ElGamalFactory
+			)
+
+			Context("Alice and bob are honest and alive", func() {
+
+				BeforeEach(func() {
+					ads = make([]*arith.ADSecret, nProc)
+					tds = make([]*arith.TDSecret, nProc)
+					errors = make([]error, nProc)
+					egsk = group.ScalarBaseMult(big.NewInt(rand.Int63()))
+					egf = commitment.NewElGamalFactory(egsk)
+				})
+
+				Context("Threshold equals 1", func() {
+					BeforeEach(func() {
+						t = 1
+					})
+					It("Should finish for alice and bob", func() {
+						wg.Add(int(nProc))
+						go func() {
+							defer wg.Done()
+							ads[alice], errors[alice] = arith.Gen(label, syncservs[alice], egf, nProc)
+						}()
+						go func() {
+							defer wg.Done()
+							ads[bob], errors[bob] = arith.Gen(label, syncservs[bob], egf, nProc)
+						}()
+						wg.Wait()
+
+						Expect(errors[alice]).NotTo(HaveOccurred())
+						Expect(errors[bob]).NotTo(HaveOccurred())
+						Expect(ads[alice]).NotTo(BeNil())
+						Expect(ads[bob]).NotTo(BeNil())
+
+						wg.Add(int(nProc))
+						go func() {
+							defer wg.Done()
+							tds[alice], errors[alice] = ads[alice].Reshare(t)
+						}()
+						go func() {
+							defer wg.Done()
+							tds[bob], errors[bob] = ads[bob].Reshare(t)
+						}()
+						wg.Wait()
+
+						Expect(errors[alice]).NotTo(HaveOccurred())
+						Expect(errors[bob]).NotTo(HaveOccurred())
+						Expect(tds[alice]).NotTo(BeNil())
+						Expect(tds[bob]).NotTo(BeNil())
+					})
+				})
+
+				Context("Threshold equals 2", func() {
+					BeforeEach(func() {
+						t = 2
+					})
+					It("Should finish for alice and bob", func() {
+						wg.Add(int(nProc))
+						go func() {
+							defer wg.Done()
+							ads[alice], errors[alice] = arith.Gen(label, syncservs[alice], egf, nProc)
+						}()
+						go func() {
+							defer wg.Done()
+							ads[bob], errors[bob] = arith.Gen(label, syncservs[bob], egf, nProc)
+						}()
+						wg.Wait()
+
+						Expect(errors[alice]).NotTo(HaveOccurred())
+						Expect(errors[bob]).NotTo(HaveOccurred())
+						Expect(ads[alice]).NotTo(BeNil())
+						Expect(ads[bob]).NotTo(BeNil())
+
+						wg.Add(int(nProc))
+						go func() {
+							defer wg.Done()
+							tds[alice], errors[alice] = ads[alice].Reshare(t)
+						}()
+						go func() {
+							defer wg.Done()
+							tds[bob], errors[bob] = ads[bob].Reshare(t)
+						}()
+						wg.Wait()
+
+						Expect(errors[alice]).NotTo(HaveOccurred())
+						Expect(errors[bob]).NotTo(HaveOccurred())
+						Expect(tds[alice]).NotTo(BeNil())
+						Expect(tds[bob]).NotTo(BeNil())
+					})
 				})
 			})
 		})

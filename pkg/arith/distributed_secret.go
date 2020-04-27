@@ -6,7 +6,6 @@ import (
 	"encoding/gob"
 	"fmt"
 	"math/big"
-	"time"
 
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/crypto/commitment"
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/crypto/zkpok"
@@ -14,56 +13,52 @@ import (
 )
 
 // DSecret is a distributed secret
-type DSecret interface {
-	Label() string
-	Reveal() (*big.Int, error)
-	Exp() (DKey, error)
-}
-
-// ADSecret is an arithmetic distirbuted secret
-type ADSecret interface {
-	DSecret
-	Reshare(uint16) (TDSecret, error)
-}
-
-// TDSecret is a thresholded distributed secret
-type TDSecret interface {
-	DSecret
-	Threshold() uint16
-}
-
-type dsecret struct {
+type DSecret struct {
 	label  string
 	secret *big.Int
 	server sync.Server
 }
 
-func (ds *dsecret) Label() string {
+// Label returns the name of the variable
+func (ds *DSecret) Label() string {
 	return ds.label
 }
 
-func (ds *dsecret) Reveal() (*big.Int, error) {
+// Reveal returns the secret kept in this variable
+func (ds *DSecret) Reveal() (*big.Int, error) {
 	return nil, nil
 }
 
-func (ds *dsecret) Exp() (DKey, error) {
+// Exp computes a common public key and its share related to this secret
+func (ds *DSecret) Exp() (*DKey, error) {
 	return nil, nil
 }
 
-type adsecret struct {
-	dsecret
+// ADSecret is an arithmetic distirbuted secret
+type ADSecret struct {
+	DSecret
 	r   *big.Int
+	egf *commitment.ElGamalFactory
 	eg  *commitment.ElGamal
 	egs []*commitment.ElGamal
 }
 
-func (*adsecret) Reshare(_ uint16) (TDSecret, error) { return nil, nil }
+// TDSecret is a thresholded distributed secret
+type TDSecret struct {
+	ADSecret
+	t uint16
+}
+
+// Threshold returns the number of parties that must collude to reveal the secret
+func (tds TDSecret) Threshold() uint16 {
+	return tds.t
+}
 
 // Gen generates a new distributed key with given label
-func Gen(label string, server sync.Server, egf *commitment.ElGamalFactory, start time.Time) (ADSecret, error) {
+func Gen(label string, server sync.Server, egf *commitment.ElGamalFactory, nProc uint16) (*ADSecret, error) {
 	var err error
 	// create a secret
-	ads := &adsecret{dsecret: dsecret{label: label, server: server}}
+	ads := &ADSecret{DSecret: DSecret{label: label, server: server}, egf: egf}
 	if ads.secret, err = rand.Int(randReader, Q); err != nil {
 		return nil, err
 	}
@@ -76,8 +71,8 @@ func Gen(label string, server sync.Server, egf *commitment.ElGamalFactory, start
 	// TODO: replace with a proper zkpok when it's ready
 	zkp := zkpok.NoopZKproof{}
 
-	toSend := bytes.Buffer{}
-	enc := gob.NewEncoder(&toSend)
+	toSendBuf := bytes.Buffer{}
+	enc := gob.NewEncoder(&toSendBuf)
 	if err := enc.Encode(ads.eg); err != nil {
 		return nil, err
 	}
@@ -86,7 +81,8 @@ func Gen(label string, server sync.Server, egf *commitment.ElGamalFactory, start
 	}
 
 	// TODO: reimplement after ZKPs are implemented
-	check := func(_ uint16, data []byte) error {
+	ads.egs = make([]*commitment.ElGamal, nProc)
+	check := func(pid uint16, data []byte) error {
 		var (
 			eg  commitment.ElGamal
 			zkp zkpok.NoopZKproof
@@ -102,29 +98,14 @@ func Gen(label string, server sync.Server, egf *commitment.ElGamalFactory, start
 		if !zkp.Verify() {
 			return fmt.Errorf("Wrong proof")
 		}
+		ads.egs[pid] = &eg
+
 		return nil
 	}
 
-	data, _, err := ads.server.Round(toSend.Bytes(), check, start, 0)
+	err = ads.server.Round([][]byte{toSendBuf.Bytes()}, check)
 	if err != nil {
 		return nil, err
-	}
-
-	ads.egs = make([]*commitment.ElGamal, len(data))
-	buf := &bytes.Buffer{}
-	dec := gob.NewDecoder(buf)
-	for i := range data {
-		if data[i] == nil {
-			continue
-		}
-		ads.egs[i] = &commitment.ElGamal{}
-		buf.Reset()
-		if _, err := buf.Write(data[i]); err != nil {
-			return nil, err
-		}
-		if err := dec.Decode(ads.egs[i]); err != nil {
-			return nil, fmt.Errorf("decode: egs %v", err)
-		}
 	}
 
 	return ads, nil
