@@ -67,12 +67,18 @@ func (g sGroup) Neg(a Point) Point {
 
 //scale has to be a nonnegative integer
 func (g sGroup) ScalarMult(a Point, scale *big.Int) Point {
+	if len(scale.Bytes()) > 256 {
+		scale.Mod(scale, g.Order())
+	}
 	resultX, resultY := g.curve.ScalarMult(a.(sPoint).x, a.(sPoint).y, scale.Bytes())
 	return sPoint{resultX, resultY}
 }
 
 //scale has to be a nonnegative integer
 func (g sGroup) ScalarBaseMult(scale *big.Int) Point {
+	if len(scale.Bytes()) > 256 {
+		scale.Mod(scale, g.Order())
+	}
 	resultX, resultY := g.curve.ScalarBaseMult(scale.Bytes())
 	return sPoint{resultX, resultY}
 }
