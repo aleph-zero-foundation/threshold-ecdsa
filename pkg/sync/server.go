@@ -19,7 +19,7 @@ const (
 // Server implements
 // TODO explain counting round internally
 type Server interface {
-	Round([][]byte, func(uint16, []byte) error) *RoundError
+	Round([][]byte, func(uint16, []byte) error) error
 }
 
 type server struct {
@@ -43,8 +43,7 @@ func NewServer(pid, nProc uint16, startTime time.Time, roundTime time.Duration, 
 	}
 }
 
-// TODO: don't return any data, grab it during check
-func (s *server) Round(toSend [][]byte, check func(uint16, []byte) error) *RoundError {
+func (s *server) Round(toSend [][]byte, check func(uint16, []byte) error) error {
 	s.roundID++
 	start := s.startTime.Add(time.Duration(s.roundID * int64(s.roundTime)))
 	// TODO: temporary solution for scheduling the start, rewrite this ugly sleep

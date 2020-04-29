@@ -54,9 +54,10 @@ func (tds *TDSecret) Reveal() (*big.Int, error) {
 	}
 
 	nProc := len(tds.egs)
-	err := tds.server.Round(toSend, check)
-	if err != nil && err.Missing() != nil && nProc-len(err.Missing()) < int(tds.t) {
-		return nil, err
+	if err := tds.server.Round(toSend, check); err != nil {
+		if err, ok := err.(*sync.RoundError); ok && err.Missing() != nil && nProc-len(err.Missing()) < int(tds.t) {
+			return nil, err
+		}
 	}
 
 	sum := big.NewInt(0)
@@ -95,9 +96,10 @@ func (tds *TDSecret) Exp() (*TDKey, error) {
 	}
 
 	nProc := len(tds.egs)
-	err := tds.server.Round(toSend, check)
-	if err != nil && err.Missing() != nil && nProc-len(err.Missing()) < int(tds.t) {
-		return nil, err
+	if err := tds.server.Round(toSend, check); err != nil {
+		if err, ok := err.(*sync.RoundError); ok && err.Missing() != nil && nProc-len(err.Missing()) < int(tds.t) {
+			return nil, err
+		}
 	}
 
 	return tdk, nil
@@ -176,7 +178,25 @@ func Lin(alpha, beta *big.Int, a, b *TDSecret, cLabel string) *TDSecret {
 	tmp := new(big.Int).Mul(beta, b.skShare)
 	tds.skShare.Add(tds.skShare, tmp)
 
-	// TODO: compute elgamal to tds.secret
+	makeEGLin := func(aeg, beg *commitment.ElGamal) *commitment.ElGamal {
+		result := tds.egf.Neutral()
+		result.Compose(result, aeg)
+		result.Exp(result, alpha)
+		tmp := tds.egf.Neutral()
+		tmp.Compose(tmp, beg)
+		tmp.Exp(tmp, beta)
+		result.Compose(result, tmp)
+
+		return result
+	}
+
+	tds.eg = makeEGLin(a.eg, b.eg)
+	tds.egs = make([]*commitment.ElGamal, len(a.egs))
+	for pid, eg := range a.egs {
+		if eg != nil {
+			tds.egs[pid] = makeEGLin(a.egs[pid], b.egs[pid])
+		}
+	}
 
 	return tds
 }
