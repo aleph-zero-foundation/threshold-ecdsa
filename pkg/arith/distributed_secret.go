@@ -40,7 +40,7 @@ type TDSecret struct {
 	t uint16
 }
 
-// Reveal compute a join secret, which share is kept in tds.
+// Reveal computes a join secret, which share is kept in tds.
 func (tds *TDSecret) Reveal() (*big.Int, error) {
 	// TODO: add EGReveal
 	toSend := [][]byte{tds.skShare.Bytes()}
@@ -159,7 +159,8 @@ func Gen(label string, server sync.Server, egf *commitment.ElGamalFactory, nProc
 		return nil
 	}
 
-	if err := ads.server.Round([][]byte{toSendBuf.Bytes()}, check); err != nil {
+	err = ads.server.Round([][]byte{toSendBuf.Bytes()}, check)
+	if err != nil {
 		return nil, err
 	}
 

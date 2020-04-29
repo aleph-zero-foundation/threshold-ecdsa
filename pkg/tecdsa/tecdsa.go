@@ -1,10 +1,11 @@
-package pkg
+package tecdsa
 
 import (
 	"fmt"
 	"math/big"
 
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/arith"
+	crypto "gitlab.com/alephledger/threshold-ecdsa/pkg/crypto"
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/crypto/commitment"
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/curve"
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/sync"
@@ -20,8 +21,8 @@ type presig struct {
 	t                uint16
 }
 
-// ProtocolTECDSA implements the tECDSA protocol
-type ProtocolTECDSA struct {
+// Protocol implements the tECDSA protocol
+type Protocol struct {
 	nProc      uint16
 	key, egKey *arith.DKey
 	egf        *commitment.ElGamalFactory
@@ -30,10 +31,10 @@ type ProtocolTECDSA struct {
 	group      curve.Group
 }
 
-// InitTECDSA constructs a new instance of tECDSA protocol and
+// Init constructs a new instance of tECDSA protocol and
 // generates a private key for signing and a secret for commitments
-func InitTECDSA(nProc uint16, network sync.Server) (*ProtocolTECDSA, error) {
-	p := &ProtocolTECDSA{network: network}
+func Init(nProc uint16, network sync.Server) (*Protocol, error) {
+	p := &Protocol{nProc: nProc, network: network}
 
 	var err error
 	p.group = curve.NewSecp256k1Group()
@@ -51,7 +52,7 @@ func InitTECDSA(nProc uint16, network sync.Server) (*ProtocolTECDSA, error) {
 }
 
 // Presign generates a new presignature
-func (p *ProtocolTECDSA) Presign(t uint16) error {
+func (p *Protocol) Presign(t uint16) error {
 	var err error
 	var k, rho, eta, tau *arith.ADSecret
 	if k, err = arith.Gen("k", p.network, p.egf, p.nProc); err != nil {
@@ -86,7 +87,7 @@ func (p *ProtocolTECDSA) Presign(t uint16) error {
 }
 
 // Sign generates a signature using a presignature prepared before
-func (p *ProtocolTECDSA) Sign(message *big.Int) (*Signature, error) {
+func (p *Protocol) Sign(message *big.Int) (*Signature, error) {
 	// TODO: if the amount of presignatures falls below some threshold, use p.Presign to generate new ones
 	if len(p.presig) == 0 {
 		return nil, fmt.Errorf("There are no more presignatures to sign the message %v", message)
@@ -100,7 +101,7 @@ func (p *ProtocolTECDSA) Sign(message *big.Int) (*Signature, error) {
 		return nil, err
 	}
 
-	r := HashToBigInt(p.group.Marshal(kKey.PublicKey()))
+	r := crypto.HashToBigInt(p.group.Marshal(kKey.PublicKey()))
 	tau, err := ps.tau.Reveal()
 	if err != nil {
 		return nil, err
