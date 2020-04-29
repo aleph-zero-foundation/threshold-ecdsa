@@ -43,7 +43,7 @@ type TDSecret struct {
 // Reveal compute a join secret, which share is kept in tds.
 func (tds *TDSecret) Reveal() (*big.Int, error) {
 	// TODO: add EGReveal
-	toSend := [][]byte{tds.secret.Bytes()}
+	toSend := [][]byte{tds.skShare.Bytes()}
 
 	secrets := make([]*big.Int, len(tds.egs))
 
@@ -62,7 +62,7 @@ func (tds *TDSecret) Reveal() (*big.Int, error) {
 	sum := big.NewInt(0)
 	for _, secret := range secrets {
 		if secret == nil {
-			sum.Add(sum, tds.secret)
+			sum.Add(sum, tds.skShare)
 		} else {
 			sum.Add(sum, secret)
 		}
@@ -77,17 +77,17 @@ func (tds *TDSecret) Exp() (*TDKey, error) {
 	group := curve.NewSecp256k1Group()
 	tdk := &TDKey{}
 	tdk.secret = tds
-	tdk.pk = group.ScalarBaseMult(tds.secret)
+	tdk.pkShare = group.ScalarBaseMult(tds.skShare)
 
 	// TODO: add EGRefresh
-	toSend := [][]byte{group.Marshal(tdk.pk)}
+	toSend := [][]byte{group.Marshal(tdk.pkShare)}
 
-	tdk.pks = make([]curve.Point, len(tds.egs))
+	tdk.pkShares = make([]curve.Point, len(tds.egs))
 
 	check := func(pid uint16, data []byte) error {
 		// TODO: check zkpok
 		var err error
-		tdk.pks[pid], err = group.Unmarshal(data)
+		tdk.pkShares[pid], err = group.Unmarshal(data)
 		if err != nil {
 			return err
 		}
@@ -157,8 +157,7 @@ func Gen(label string, server sync.Server, egf *commitment.ElGamalFactory, nProc
 		return nil
 	}
 
-	err = ads.server.Round([][]byte{toSendBuf.Bytes()}, check)
-	if err != nil {
+	if err := ads.server.Round([][]byte{toSendBuf.Bytes()}, check); err != nil {
 		return nil, err
 	}
 
@@ -173,9 +172,9 @@ func Lin(alpha, beta *big.Int, a, b *TDSecret, cLabel string) *TDSecret {
 	tds.egf = a.egf
 	tds.t = a.t
 
-	tds.secret = new(big.Int).Mul(alpha, a.secret)
-	tmp := new(big.Int).Mul(beta, b.secret)
-	tds.secret.Add(tds.secret, tmp)
+	tds.skShare = new(big.Int).Mul(alpha, a.skShare)
+	tmp := new(big.Int).Mul(beta, b.skShare)
+	tds.skShare.Add(tds.skShare, tmp)
 
 	// TODO: compute elgamal to tds.secret
 

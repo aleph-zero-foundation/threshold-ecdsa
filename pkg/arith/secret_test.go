@@ -57,7 +57,7 @@ var _ = Describe("Secret Test", func() {
 			alice, bob uint16
 		)
 
-		gen := func(ads []*arith.ADSecret, label string, egf *commitment.ElGamalFactory) {
+		gen := func(ads []*arith.ADSecret, errors []error, label string, egf *commitment.ElGamalFactory) {
 			wg.Add(int(nProc))
 			go func() {
 				defer wg.Done()
@@ -71,6 +71,8 @@ var _ = Describe("Secret Test", func() {
 
 			Expect(errors[alice]).NotTo(HaveOccurred())
 			Expect(errors[bob]).NotTo(HaveOccurred())
+			Expect(ads[alice]).NotTo(BeNil())
+			Expect(ads[bob]).NotTo(BeNil())
 		}
 
 		BeforeEach(func() {
@@ -97,7 +99,7 @@ var _ = Describe("Secret Test", func() {
 				})
 
 				It("Should finish for alice and bob", func() {
-					gen(ads, label, egf)
+					gen(ads, errors, label, egf)
 				})
 			})
 		})
@@ -136,11 +138,10 @@ var _ = Describe("Secret Test", func() {
 		Describe("Resharing arithmetic distributed secrets", func() {
 
 			var (
-				t    uint16
-				ads  []*arith.ADSecret
-				tds  []*arith.TDSecret
-				egsk curve.Point
-				egf  *commitment.ElGamalFactory
+				t   uint16
+				ads []*arith.ADSecret
+				tds []*arith.TDSecret
+				egf *commitment.ElGamalFactory
 			)
 
 			Context("Alice and Bob are honest and alive", func() {
@@ -149,7 +150,7 @@ var _ = Describe("Secret Test", func() {
 					ads = make([]*arith.ADSecret, nProc)
 					tds = make([]*arith.TDSecret, nProc)
 					errors = make([]error, nProc)
-					egsk = group.ScalarBaseMult(big.NewInt(rand.Int63()))
+					egsk := group.ScalarBaseMult(big.NewInt(rand.Int63()))
 					egf = commitment.NewElGamalFactory(egsk)
 				})
 
@@ -158,21 +159,7 @@ var _ = Describe("Secret Test", func() {
 						t = 1
 					})
 					It("Should finish for alice and bob", func() {
-						wg.Add(int(nProc))
-						go func() {
-							defer wg.Done()
-							ads[alice], errors[alice] = arith.Gen(label, syncservs[alice], egf, nProc)
-						}()
-						go func() {
-							defer wg.Done()
-							ads[bob], errors[bob] = arith.Gen(label, syncservs[bob], egf, nProc)
-						}()
-						wg.Wait()
-
-						Expect(errors[alice]).NotTo(HaveOccurred())
-						Expect(errors[bob]).NotTo(HaveOccurred())
-						Expect(ads[alice]).NotTo(BeNil())
-						Expect(ads[bob]).NotTo(BeNil())
+						gen(ads, errors, label, egf)
 
 						wg.Add(int(nProc))
 						go func() {
@@ -197,16 +184,7 @@ var _ = Describe("Secret Test", func() {
 						t = 2
 					})
 					It("Should finish for alice and bob", func() {
-						wg.Add(int(nProc))
-						go func() {
-							defer wg.Done()
-							ads[alice], errors[alice] = arith.Gen(label, syncservs[alice], egf, nProc)
-						}()
-						go func() {
-							defer wg.Done()
-							ads[bob], errors[bob] = arith.Gen(label, syncservs[bob], egf, nProc)
-						}()
-						wg.Wait()
+						gen(ads, errors, label, egf)
 
 						Expect(errors[alice]).NotTo(HaveOccurred())
 						Expect(errors[bob]).NotTo(HaveOccurred())
@@ -258,8 +236,8 @@ var _ = Describe("Secret Test", func() {
 				})
 
 				It("Should finish for alice and bob", func() {
-					gen(a, al, egf)
-					gen(b, bl, egf)
+					gen(a, errors, al, egf)
+					gen(b, errors, bl, egf)
 					wg.Add(int(nProc))
 					go func() {
 						defer wg.Done()
