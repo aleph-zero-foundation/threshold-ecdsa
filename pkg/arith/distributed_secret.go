@@ -24,7 +24,7 @@ func (ds *DSecret) Label() string {
 	return ds.label
 }
 
-// Reveal returns the secret kept in this variable
+// Reveal compute a join secret, which share is kept in ds
 func (ds *DSecret) Reveal() (*big.Int, error) {
 	return nil, nil
 }
@@ -109,4 +109,19 @@ func Gen(label string, server sync.Server, egf *commitment.ElGamalFactory, nProc
 	}
 
 	return ads, nil
+}
+
+// Lin computes locally a linear combination of the secrets
+func Lin(alpha, beta *big.Int, a, b *TDSecret, cLabel string) *TDSecret {
+	tds := &TDSecret{}
+	tds.label = cLabel
+	tds.server = a.server
+	tds.egf = a.egf
+	tds.t = a.t
+
+	tds.secret = new(big.Int).Mul(alpha, a.secret)
+	tmp := new(big.Int).Mul(beta, b.secret)
+	tds.secret.Add(tds.secret, tmp)
+
+	return tds
 }
