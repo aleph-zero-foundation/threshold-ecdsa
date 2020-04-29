@@ -33,7 +33,7 @@ func Mult(a, b *ADSecret, cLabel string) (c *ADSecret, err error) {
 	}
 
 	// Step 2. Run priv mult and compute the share of c
-	if c.secret, err = PrivMult(a.secret, b.secret, pid, nProc, a.server); err != nil {
+	if c.skShare, err = PrivMult(a.skShare, b.skShare, pid, nProc, a.server); err != nil {
 		return nil, err
 	}
 
@@ -41,7 +41,7 @@ func Mult(a, b *ADSecret, cLabel string) (c *ADSecret, err error) {
 	if c.r, err = rand.Int(randReader, Q); err != nil {
 		return nil, err
 	}
-	c.eg = a.egf.Create(c.secret, c.r)
+	c.eg = a.egf.Create(c.skShare, c.r)
 
 	toSendBuf := bytes.Buffer{}
 	enc := gob.NewEncoder(&toSendBuf)
@@ -84,7 +84,7 @@ func Mult(a, b *ADSecret, cLabel string) (c *ADSecret, err error) {
 	if err != nil {
 		return nil, err
 	}
-	bProd.Exp(bProd, a.secret)
+	bProd.Exp(bProd, a.skShare)
 	baShareEG := a.egf.Create(big.NewInt(0), r)
 	baShareEG.Compose(bProd, baShareEG)
 
