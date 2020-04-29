@@ -16,6 +16,7 @@ import (
 func Mult(a, b *ADSecret, cLabel string) (c *ADSecret, err error) {
 	nProc := len(a.egs)
 
+	c = &ADSecret{}
 	c.label = cLabel
 	c.server = a.server
 
@@ -23,7 +24,7 @@ func Mult(a, b *ADSecret, cLabel string) (c *ADSecret, err error) {
 	pid := -1
 	bProd := b.egf.Neutral()
 	for id, eg := range b.egs {
-		if b.egs == nil {
+		if eg == nil {
 			pid = id
 			bProd.Compose(bProd, b.eg)
 		} else {
@@ -126,12 +127,20 @@ func Mult(a, b *ADSecret, cLabel string) (c *ADSecret, err error) {
 	// Step 5. Compute ElGamal commitments to a product ab and c
 	abEG := b.egf.Neutral()
 	for _, eg := range baShareEGs {
-		abEG.Compose(abEG, eg)
+		if eg == nil {
+			abEG.Compose(abEG, baShareEG)
+		} else {
+			abEG.Compose(abEG, eg)
+		}
 	}
 
 	cEG := b.egf.Neutral()
 	for _, eg := range c.egs {
-		cEG.Compose(cEG, eg)
+		if eg == nil {
+			cEG.Compose(cEG, c.eg)
+		} else {
+			cEG.Compose(cEG, eg)
+		}
 	}
 
 	// Step 6. Run the CheckDH procedure on E(ab)/E(c)
