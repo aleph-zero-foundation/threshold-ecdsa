@@ -14,9 +14,9 @@ import (
 
 // DSecret is a distributed secret
 type DSecret struct {
-	label  string
-	secret *big.Int
-	server sync.Server
+	label   string
+	skShare *big.Int
+	server  sync.Server
 }
 
 // Label returns the name of the variable
@@ -59,7 +59,7 @@ func Gen(label string, server sync.Server, egf *commitment.ElGamalFactory, nProc
 	var err error
 	// create a secret
 	ads := &ADSecret{DSecret: DSecret{label: label, server: server}, egf: egf}
-	if ads.secret, err = rand.Int(randReader, Q); err != nil {
+	if ads.skShare, err = rand.Int(randReader, Q); err != nil {
 		return nil, err
 	}
 	if ads.r, err = rand.Int(randReader, Q); err != nil {
@@ -67,7 +67,7 @@ func Gen(label string, server sync.Server, egf *commitment.ElGamalFactory, nProc
 	}
 
 	// create a commitment and a zkpok
-	ads.eg = egf.Create(ads.secret, ads.r)
+	ads.eg = egf.Create(ads.skShare, ads.r)
 	// TODO: replace with a proper zkpok when it's ready
 	zkp := zkpok.NoopZKproof{}
 

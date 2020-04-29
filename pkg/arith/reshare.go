@@ -21,7 +21,7 @@ func (ads *ADSecret) Reshare(t uint16) (*TDSecret, error) {
 	nProc := len(ads.egs)
 	var err error
 
-	// STEP 1. Publish a proof of knowledge of ads.secret and ads.r
+	// STEP 1. Publish a proof of knowledge of ads.skShare and ads.r
 	toSendBuf := bytes.Buffer{}
 	toSend := [][]byte{nil}
 	enc := gob.NewEncoder(&toSendBuf)
@@ -51,9 +51,9 @@ func (ads *ADSecret) Reshare(t uint16) (*TDSecret, error) {
 		return nil, err
 	}
 
-	// STEP 2. Pick a random polynomial f of degree t such that f(0) = ads.secret
+	// STEP 2. Pick a random polynomial f of degree t such that f(0) = ads.skShare
 	var f []*big.Int
-	if f, err = poly(t, ads.secret); err != nil {
+	if f, err = poly(t, ads.skShare); err != nil {
 		return nil, err
 	}
 
@@ -333,7 +333,7 @@ func (ads *ADSecret) Reshare(t uint16) (*TDSecret, error) {
 	}
 
 	tds := &TDSecret{*ads, t}
-	ads.secret = share
+	ads.skShare = share
 	ads.r = shareRandRefresh
 	ads.eg = shareComm
 	ads.egs = shareComms

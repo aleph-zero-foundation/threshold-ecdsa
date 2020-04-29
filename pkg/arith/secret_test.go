@@ -31,7 +31,6 @@ var _ = Describe("Secret Test", func() {
 		errors    []error
 		group     curve.Group
 	)
-
 	JustBeforeEach(func() {
 		wg = stdsync.WaitGroup{}
 		netservs = tests.NewNetwork(int(nProc))
@@ -58,6 +57,22 @@ var _ = Describe("Secret Test", func() {
 			alice, bob uint16
 		)
 
+		gen := func(ads []*arith.ADSecret, label string, egf *commitment.ElGamalFactory) {
+			wg.Add(int(nProc))
+			go func() {
+				defer wg.Done()
+				ads[alice], errors[alice] = arith.Gen(label, syncservs[alice], egf, nProc)
+			}()
+			go func() {
+				defer wg.Done()
+				ads[bob], errors[bob] = arith.Gen(label, syncservs[bob], egf, nProc)
+			}()
+			wg.Wait()
+
+			Expect(errors[alice]).NotTo(HaveOccurred())
+			Expect(errors[bob]).NotTo(HaveOccurred())
+		}
+
 		BeforeEach(func() {
 			alice = 0
 			bob = 1
@@ -68,35 +83,21 @@ var _ = Describe("Secret Test", func() {
 		Describe("Generating arithmetic distributed secrets with arith.Gen", func() {
 
 			var (
-				ads  []*arith.ADSecret
-				egsk curve.Point
-				egf  *commitment.ElGamalFactory
+				ads []*arith.ADSecret
+				egf *commitment.ElGamalFactory
 			)
 
-			Context("Alice and bob are honest and alive", func() {
+			Context("Alice and Bob are honest and alive", func() {
 
 				BeforeEach(func() {
 					ads = make([]*arith.ADSecret, nProc)
 					errors = make([]error, nProc)
-					egsk = group.ScalarBaseMult(big.NewInt(rand.Int63()))
+					egsk := group.ScalarBaseMult(big.NewInt(rand.Int63()))
 					egf = commitment.NewElGamalFactory(egsk)
 				})
 
 				It("Should finish for alice and bob", func() {
-					wg.Add(int(nProc))
-					go func() {
-						defer wg.Done()
-						ads[alice], errors[alice] = arith.Gen(label, syncservs[alice], egf, nProc)
-					}()
-					go func() {
-						defer wg.Done()
-						ads[bob], errors[bob] = arith.Gen(label, syncservs[bob], egf, nProc)
-					}()
-					wg.Wait()
-
-					Expect(errors[alice]).NotTo(HaveOccurred())
-					Expect(errors[bob]).NotTo(HaveOccurred())
-
+					gen(ads, label, egf)
 				})
 			})
 		})
@@ -106,7 +107,7 @@ var _ = Describe("Secret Test", func() {
 				dks []*arith.DKey
 			)
 
-			Context("Alice and bob are honest and alive", func() {
+			Context("Alice and Bob are honest and alive", func() {
 
 				BeforeEach(func() {
 					dks = make([]*arith.DKey, nProc)
@@ -142,7 +143,7 @@ var _ = Describe("Secret Test", func() {
 				egf  *commitment.ElGamalFactory
 			)
 
-			Context("Alice and bob are honest and alive", func() {
+			Context("Alice and Bob are honest and alive", func() {
 
 				BeforeEach(func() {
 					ads = make([]*arith.ADSecret, nProc)
@@ -228,6 +229,50 @@ var _ = Describe("Secret Test", func() {
 						Expect(tds[alice]).NotTo(BeNil())
 						Expect(tds[bob]).NotTo(BeNil())
 					})
+				})
+			})
+
+		})
+
+		Describe("Multiplying two secrets with arith.Mul", func() {
+
+			var (
+				a, b, c    []*arith.ADSecret
+				al, bl, cl string
+				egf        *commitment.ElGamalFactory
+			)
+
+			Context("Alice and Bob are honest and alive", func() {
+
+				BeforeEach(func() {
+					a = make([]*arith.ADSecret, nProc)
+					b = make([]*arith.ADSecret, nProc)
+					c = make([]*arith.ADSecret, nProc)
+					al = "a"
+					bl = "b"
+					cl = "c"
+
+					errors = make([]error, nProc)
+					egsk := group.ScalarBaseMult(big.NewInt(rand.Int63()))
+					egf = commitment.NewElGamalFactory(egsk)
+				})
+
+				It("Should finish for alice and bob", func() {
+					gen(a, al, egf)
+					gen(b, bl, egf)
+					wg.Add(int(nProc))
+					go func() {
+						defer wg.Done()
+						c[alice], errors[alice] = arith.Mult(a[alice], b[alice], cl)
+					}()
+					go func() {
+						defer wg.Done()
+						c[bob], errors[bob] = arith.Mult(a[bob], b[bob], cl)
+					}()
+					wg.Wait()
+
+					Expect(errors[alice]).NotTo(HaveOccurred())
+					Expect(errors[bob]).NotTo(HaveOccurred())
 				})
 			})
 		})
