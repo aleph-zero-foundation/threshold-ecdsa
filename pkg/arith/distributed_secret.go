@@ -9,6 +9,7 @@ import (
 
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/crypto/commitment"
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/crypto/zkpok"
+	"gitlab.com/alephledger/threshold-ecdsa/pkg/curve"
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/sync"
 )
 
@@ -72,7 +73,34 @@ func (tds *TDSecret) Reveal() (*big.Int, error) {
 
 // Exp computes a common public key and its share related to this secret
 func (tds *TDSecret) Exp() (*TDKey, error) {
-	return nil, nil
+	// TODO: keep it somewhere
+	group := curve.NewSecp256k1Group()
+	tdk := &TDKey{}
+	tdk.secret = tds
+	tdk.pk = group.ScalarBaseMult(tds.secret)
+
+	// TODO: add EGRefresh
+	toSend := [][]byte{group.Marshal(tdk.pk)}
+
+	tdk.pks = make([]curve.Point, len(tds.egs))
+
+	check := func(pid uint16, data []byte) error {
+		// TODO: check zkpok
+		var err error
+		tdk.pks[pid], err = group.Unmarshal(data)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+
+	nProc := len(tds.egs)
+	err := tds.server.Round(toSend, check)
+	if err != nil && err.Missing() != nil && nProc-len(err.Missing()) < int(tds.t) {
+		return nil, err
+	}
+
+	return tdk, nil
 }
 
 // Threshold returns the number of parties that must collude to reveal the secret
@@ -148,6 +176,8 @@ func Lin(alpha, beta *big.Int, a, b *TDSecret, cLabel string) *TDSecret {
 	tds.secret = new(big.Int).Mul(alpha, a.secret)
 	tmp := new(big.Int).Mul(beta, b.secret)
 	tds.secret.Add(tds.secret, tmp)
+
+	// TODO: compute elgamal to tds.secret
 
 	return tds
 }
