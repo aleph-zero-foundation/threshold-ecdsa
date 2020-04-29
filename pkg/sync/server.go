@@ -19,7 +19,7 @@ const (
 // Server implements
 // TODO explain counting round internally
 type Server interface {
-	Round([][]byte, func(uint16, []byte) error) error
+	Round([][]byte, func(uint16, []byte) error) *RoundError
 }
 
 type server struct {
@@ -44,13 +44,13 @@ func NewServer(pid, nProc uint16, startTime time.Time, roundTime time.Duration, 
 }
 
 // TODO: don't return any data, grab it during check
-func (s *server) Round(toSend [][]byte, check func(uint16, []byte) error) error {
+func (s *server) Round(toSend [][]byte, check func(uint16, []byte) error) *RoundError {
 	s.roundID++
 	start := s.startTime.Add(time.Duration(s.roundID * int64(s.roundTime)))
 	// TODO: temporary solution for scheduling the start, rewrite this ugly sleep
 	d := time.Until(start)
 	if d < 0 {
-		return fmt.Errorf("the start time for round %v has passed %v ago", s.roundID, -d)
+		return wrap(fmt.Errorf("the start time for round %v has passed %v ago", s.roundID, -d))
 	}
 	time.Sleep(d)
 
@@ -65,7 +65,7 @@ func (s *server) Round(toSend [][]byte, check func(uint16, []byte) error) error 
 
 	data, missing, err := s.receiveFromAll(roundDeadline)
 	if err != nil {
-		return err
+		return wrap(err)
 	}
 
 	if len(missing) > 0 {
@@ -73,7 +73,7 @@ func (s *server) Round(toSend [][]byte, check func(uint16, []byte) error) error 
 	}
 
 	if errSend != nil {
-		return errSend
+		return wrap(errSend)
 	}
 
 	errors := []error{}
@@ -96,7 +96,7 @@ func (s *server) Round(toSend [][]byte, check func(uint16, []byte) error) error 
 	// TODO: better timeout handling
 	d = time.Until(roundDeadline)
 	if d < 0 {
-		return fmt.Errorf("receiving took too long %v", -d)
+		return wrap(fmt.Errorf("receiving took too long %v", -d))
 	}
 
 	return nil

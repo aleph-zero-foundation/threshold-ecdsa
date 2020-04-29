@@ -24,16 +24,6 @@ func (ds *DSecret) Label() string {
 	return ds.label
 }
 
-// Reveal compute a join secret, which share is kept in ds
-func (ds *DSecret) Reveal() (*big.Int, error) {
-	return nil, nil
-}
-
-// Exp computes a common public key and its share related to this secret
-func (ds *DSecret) Exp() (*DKey, error) {
-	return nil, nil
-}
-
 // ADSecret is an arithmetic distirbuted secret
 type ADSecret struct {
 	DSecret
@@ -47,6 +37,42 @@ type ADSecret struct {
 type TDSecret struct {
 	ADSecret
 	t uint16
+}
+
+// Reveal compute a join secret, which share is kept in tds.
+func (tds *TDSecret) Reveal() (*big.Int, error) {
+	// TODO: add EGReveal
+	toSend := [][]byte{tds.secret.Bytes()}
+
+	secrets := make([]*big.Int, len(tds.egs))
+
+	check := func(pid uint16, data []byte) error {
+		// TODO: check zkpok
+		secrets[pid] = new(big.Int).SetBytes(data)
+		return nil
+	}
+
+	nProc := len(tds.egs)
+	err := tds.server.Round(toSend, check)
+	if err != nil && err.Missing() != nil && nProc-len(err.Missing()) < int(tds.t) {
+		return nil, err
+	}
+
+	sum := big.NewInt(0)
+	for _, secret := range secrets {
+		if secret == nil {
+			sum.Add(sum, tds.secret)
+		} else {
+			sum.Add(sum, secret)
+		}
+	}
+
+	return sum, nil
+}
+
+// Exp computes a common public key and its share related to this secret
+func (tds *TDSecret) Exp() (*TDKey, error) {
+	return nil, nil
 }
 
 // Threshold returns the number of parties that must collude to reveal the secret
