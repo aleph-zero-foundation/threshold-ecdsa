@@ -15,6 +15,7 @@ import (
 // DKey is a distirbuted key
 type DKey struct {
 	secret   *DSecret
+	pk       curve.Point
 	pkShare  curve.Point
 	pkShares []curve.Point
 }
@@ -24,9 +25,9 @@ func (dk *DKey) Label() string {
 	return dk.secret.Label()
 }
 
-// RevealExp computes the common public key which share is kept in this key
-func (dk *DKey) RevealExp() (curve.Point, error) {
-	return nil, nil
+// PublicKey returns global public key
+func (dk *DKey) PublicKey() curve.Point {
+	return dk.pk
 }
 
 // ADKey is an arithmetic distirbuted key
@@ -74,13 +75,13 @@ func GenExpReveal(label string, server sync.Server, nProc uint16, group curve.Gr
 		skShare: skShare,
 		server:  server,
 	}
-	DKey := &DKey{secret: DSecret}
+	dk := &DKey{secret: DSecret}
 
-	DKey.pkShare = group.ScalarBaseMult(DSecret.skShare)
+	dk.pkShare = group.ScalarBaseMult(DSecret.skShare)
 
 	// Round 1: commmit to (g^{a_k}, pi_k)
 	// TODO: replace with a proper zkpok and nmc when it's ready
-	dataBytes := group.Marshal(DKey.pkShare)
+	dataBytes := group.Marshal(dk.pkShare)
 
 	zkp := zkpok.NoopZKproof{}
 	zkpBytes, err := zkp.MarshalBinary()
@@ -124,11 +125,11 @@ func GenExpReveal(label string, server sync.Server, nProc uint16, group curve.Gr
 	if _, err = toSend.Write(buf); err != nil {
 		return nil, err
 	}
-	if _, err = toSend.Write(group.Marshal(DKey.pkShare)); err != nil {
+	if _, err = toSend.Write(group.Marshal(dk.pkShare)); err != nil {
 		return nil, err
 	}
 
-	DKey.pkShares = make([]curve.Point, nProc)
+	dk.pkShares = make([]curve.Point, nProc)
 	check = func(pid uint16, data []byte) error {
 		zkpBytesLen := binary.LittleEndian.Uint16(data[:2])
 		zkp := &zkpok.NoopZKproof{}
@@ -147,7 +148,7 @@ func GenExpReveal(label string, server sync.Server, nProc uint16, group curve.Gr
 			return err
 		}
 
-		DKey.pkShares[pid] = cp
+		dk.pkShares[pid] = cp
 
 		return nil
 	}
@@ -157,7 +158,12 @@ func GenExpReveal(label string, server sync.Server, nProc uint16, group curve.Gr
 		return nil, err
 	}
 
-	// TODO: form global public key
+	dk.pk = dk.pkShare
+	for _, pk := range dk.pkShares {
+		if pk != nil {
+			dk.pk = group.Add(dk.pk, pk)
+		}
+	}
 
-	return DKey, nil
+	return dk, nil
 }
