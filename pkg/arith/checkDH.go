@@ -85,7 +85,7 @@ func query(u, v curve.Point, group curve.Group, key *DKey) error {
 		}
 
 		length := make([]byte, 4)
-		binary.BigEndian.PutUint64(length, Uint64(len(p)))
+		binary.BigEndian.PutUint64(length, uint64(len(p)))
 		if _, err := dataBuf.Write(length); err != nil {
 			return nil, err
 		}
@@ -96,7 +96,7 @@ func query(u, v curve.Point, group curve.Group, key *DKey) error {
 		}
 
 		length = make([]byte, 4)
-		binary.BigEndian.PutUint64(length, Uint64(len(p)))
+		binary.BigEndian.PutUint64(length, uint64(len(p)))
 		if _, err := dataBuf.Write(length); err != nil {
 			return nil, err
 		}
@@ -146,8 +146,21 @@ func query(u, v curve.Point, group curve.Group, key *DKey) error {
 	if _, err := toSendBuf.Write(p); err != nil {
 		return err
 	}
+
+	length := make([]byte, 4)
+	binary.BigEndian.PutUint64(length, uint64(len(p)))
+	if _, err := toSendBuf.Write(length); err != nil {
+		return err
+	}
+
 	p = group.Marshal(testValueShare)
 	if _, err := toSendBuf.Write(p); err != nil {
+		return err
+	}
+
+	length = make([]byte, 4)
+	binary.BigEndian.PutUint64(length, uint64(len(p)))
+	if _, err := toSendBuf.Write(length); err != nil {
 		return err
 	}
 
@@ -158,16 +171,7 @@ func query(u, v curve.Point, group curve.Group, key *DKey) error {
 	verifyValueShares := make([]curve.Point, nProc)
 
 	check = func(pid uint16, data []byte) error {
-		var rrerand zkpok.NoopZKproof
-		dec := gob.NewDecoder(bytes.NewBuffer(data))
-		if err := dec.Decode(&rrerand); err != nil {
-			return err
-		}
-		if !rrerand.Verify() {
-			return fmt.Errorf("Wrong rrerand proof")
-		}
-
-		length := binary.BigEndian.PutUint64(data[0:4])
+		length := binary.BigEndian.Uint64(data[0:4])
 		data = data[4:]
 
 		var verifyValueShare, testValueShare curve.Point
@@ -178,7 +182,7 @@ func query(u, v curve.Point, group curve.Group, key *DKey) error {
 
 		data = data[length:]
 
-		length = binary.BigEndian.PutUint64(data[0:4])
+		length = binary.BigEndian.Uint64(data[0:4])
 		data = data[4:]
 
 		if testValueShare, err = group.Unmarshal(data[0:length]); err != nil {
@@ -186,7 +190,16 @@ func query(u, v curve.Point, group curve.Group, key *DKey) error {
 		}
 		testValueShares[pid] = testValueShare
 
-		data[length:]
+		data = data[length:]
+
+		var rrerand zkpok.NoopZKproof
+		dec := gob.NewDecoder(bytes.NewBuffer(data))
+		if err := dec.Decode(&rrerand); err != nil {
+			return err
+		}
+		if !rrerand.Verify() {
+			return fmt.Errorf("Wrong rrerand proof")
+		}
 
 		nmc, err := buildNMC(testValueShare, verifyValueShare, group, &rrerand)
 		if err != nil {
@@ -221,21 +234,31 @@ func query(u, v curve.Point, group curve.Group, key *DKey) error {
 	if _, err := toSendBuf.Write(p); err != nil {
 		return err
 	}
+	length = make([]byte, 4)
+	binary.BigEndian.PutUint64(length, uint64(len(p)))
+	if _, err := toSendBuf.Write(length); err != nil {
+		return err
+	}
 	if err := enc.Encode(regexp); err != nil {
 		return err
 	}
 	regexps := make([]zkpok.NoopZKproof, nProc)
 	testValues := make([]curve.Point, nProc)
 	check = func(pid uint16, data []byte) error {
-		var regexp zkpok.NoopZKproof
-		buf := bytes.NewBuffer(data)
-		dec := gob.NewDecoder(buf)
+		length := binary.BigEndian.Uint64(data[0:4])
+		data = data[4:]
 
 		var testValue curve.Point
-		if testValue, err = group.Unmarshal(data); err != nil {
+		if testValue, err = group.Unmarshal(data[0:length]); err != nil {
 			return err
 		}
 		testValues[pid] = testValue
+
+		data = data[length:]
+
+		var regexp zkpok.NoopZKproof
+		buf := bytes.NewBuffer(data)
+		dec := gob.NewDecoder(buf)
 
 		if err := dec.Decode(&regexp); err != nil {
 			return fmt.Errorf("decode: regexp %v", err)
