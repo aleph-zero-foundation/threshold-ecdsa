@@ -82,8 +82,8 @@ func GenExpReveal(label string, server sync.Server, nProc uint16, group curve.Gr
 	if err != nil {
 		return nil, err
 	}
-	DSecret := NewDSecret(label, skShare, server)
-	pkShare := group.ScalarBaseMult(DSecret.skShare)
+	dSecret := NewDSecret(label, skShare, server)
+	pkShare := group.ScalarBaseMult(dSecret.skShare)
 
 	// Round 1: commmit to (g^{a_k}, pi_k)
 	// TODO: replace with a proper zkpok and nmc when it's ready
@@ -164,5 +164,5 @@ func GenExpReveal(label string, server sync.Server, nProc uint16, group curve.Gr
 		return nil, err
 	}
 
-	return NewDKey(DSecret, pkShare, pkShares, group), nil
+	return NewDKey(dSecret, pkShare, pkShares, group), nil
 }
