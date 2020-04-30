@@ -1,6 +1,7 @@
 package tecdsa_test
 
 import (
+	"math/big"
 	"math/rand"
 	stdsync "sync"
 	"time"
@@ -15,7 +16,7 @@ import (
 	"gitlab.com/alephledger/core-go/pkg/tests"
 )
 
-var _ = Describe("Secret Test", func() {
+var _ = Describe("TECDSA Test", func() {
 
 	var (
 		nProc     uint16
@@ -27,6 +28,7 @@ var _ = Describe("Secret Test", func() {
 		wg        stdsync.WaitGroup
 		errors    []error
 	)
+
 	JustBeforeEach(func() {
 		wg = stdsync.WaitGroup{}
 		netservs = tests.NewNetwork(int(nProc))
@@ -35,11 +37,12 @@ var _ = Describe("Secret Test", func() {
 			syncservs[i] = sync.NewServer(i, nProc, start, roundTime, netservs[i])
 		}
 		protos = make([]*tecdsa.Protocol, nProc)
+		errors = make([]error, nProc)
 	})
 
 	BeforeEach(func() {
 		start = time.Now().Add(time.Millisecond * 10)
-		roundTime = 100 * time.Millisecond
+		roundTime = 20 * time.Millisecond
 		rand.Seed(1729)
 	})
 
@@ -47,51 +50,126 @@ var _ = Describe("Secret Test", func() {
 		tests.CloseNetwork(netservs)
 	})
 
-	Describe("Two parties", func() {
+	init := func() {
+		wg.Add(int(nProc))
+		for i := uint16(0); i < nProc; i++ {
+			go func(i uint16) {
+				defer wg.Done()
+				protos[i], errors[i] = tecdsa.Init(nProc, syncservs[i])
+			}(i)
+		}
 
-		var (
-			alice, bob uint16
-		)
+		wg.Wait()
 
-		BeforeEach(func() {
-			alice = 0
-			bob = 1
-			nProc = 2
-		})
+		for i := uint16(0); i < nProc; i++ {
+			Expect(errors[i]).NotTo(HaveOccurred())
+			Expect(protos[i]).NotTo(BeNil())
+		}
+	}
 
-		Describe("Generating arithmetic distributed secrets with arith.Gen", func() {
+	Describe("Initialization", func() {
 
-			init := func() {
-				wg.Add(int(nProc))
-				go func() {
-					defer wg.Done()
-					protos[alice], errors[alice] = tecdsa.Init(nProc, syncservs[alice])
-				}()
-				go func() {
-					defer wg.Done()
-					protos[bob], errors[bob] = tecdsa.Init(nProc, syncservs[bob])
-				}()
+		Context("Two parties", func() {
 
-				wg.Wait()
-
-				Expect(errors[alice]).NotTo(HaveOccurred())
-				Expect(errors[bob]).NotTo(HaveOccurred())
-				Expect(protos[alice]).NotTo(BeNil())
-				Expect(protos[bob]).NotTo(BeNil())
-			}
+			BeforeEach(func() {
+				nProc = 2
+			})
 
 			Context("Alice and Bob are honest and alive", func() {
 
-				BeforeEach(func() {
-					errors = make([]error, nProc)
-				})
-
-				It("Init should finish for alice and bob", func() {
+				It("Should init the protocol successfully", func() {
 					init()
-
 				})
 			})
 		})
 	})
 
+	Describe("Signing", func() {
+		var (
+			t     uint16
+			msg   *big.Int
+			signs []*tecdsa.Signature
+		)
+
+		presig := func() {
+			wg.Add(int(nProc))
+			for i := uint16(0); i < nProc; i++ {
+				go func(i uint16) {
+					defer wg.Done()
+					errors[i] = protos[i].Presign(t)
+				}(i)
+			}
+
+			for i := uint16(0); i < nProc; i++ {
+				Expect(errors[i]).NotTo(HaveOccurred())
+			}
+			wg.Wait()
+		}
+
+		sign := func() {
+			wg.Add(int(nProc))
+			for i := uint16(0); i < nProc; i++ {
+				go func(i uint16) {
+					defer wg.Done()
+					signs[i], errors[i] = protos[i].Sign(msg)
+				}(i)
+			}
+
+			for i := uint16(0); i < nProc; i++ {
+				Expect(errors[i]).NotTo(HaveOccurred())
+				Expect(signs[i]).NotTo(BeNil())
+			}
+
+			wg.Wait()
+		}
+
+		Context("Two parties", func() {
+
+			Context("Threshold equal 1", func() {
+
+				BeforeEach(func() {
+					t = 1
+					msg = big.NewInt(rand.Int63())
+					signs = make([]*tecdsa.Signature, nProc)
+				})
+
+				Context("Alice and Bob are honest and alive", func() {
+
+					It("Should generate a presignature successfully", func() {
+						init()
+						presig()
+					})
+
+					It("Should sing a message successfully", func() {
+						init()
+						presig()
+						sign()
+					})
+				})
+			})
+
+			Context("Threshold equal 2", func() {
+
+				BeforeEach(func() {
+					t = 2
+					msg = big.NewInt(rand.Int63())
+					signs = make([]*tecdsa.Signature, nProc)
+				})
+
+				Context("Alice and Bob are honest and alive", func() {
+
+					It("Should generate a presignature successfully", func() {
+						init()
+						presig()
+					})
+
+					It("Should sing a message successfully", func() {
+						init()
+						presig()
+						sign()
+					})
+				})
+			})
+		})
+	})
 })

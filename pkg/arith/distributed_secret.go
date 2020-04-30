@@ -97,10 +97,13 @@ func (tds *TDSecret) Exp() (*TDKey, error) {
 
 	nProc := len(tds.egs)
 	if err := tds.server.Round(toSend, check); err != nil {
-		if err, ok := err.(*sync.RoundError); ok && err.Missing() != nil && nProc-len(err.Missing()) < int(tds.t) {
+		if rErr, ok := err.(*sync.RoundError); ok && rErr.Missing() != nil && nProc-len(rErr.Missing()) < int(tds.t) {
 			return nil, err
 		}
 	}
+
+	// TODO: use Lagrange interpolation
+	tdk.pk = tdk.pkShare
 
 	return tdk, nil
 }
