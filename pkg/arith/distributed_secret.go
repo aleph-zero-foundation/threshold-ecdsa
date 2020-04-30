@@ -9,6 +9,7 @@ import (
 
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/crypto/commitment"
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/crypto/zkpok"
+	"gitlab.com/alephledger/threshold-ecdsa/pkg/curve"
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/sync"
 )
 
@@ -24,16 +25,6 @@ func (ds *DSecret) Label() string {
 	return ds.label
 }
 
-// Reveal returns the secret kept in this variable
-func (ds *DSecret) Reveal() (*big.Int, error) {
-	return nil, nil
-}
-
-// Exp computes a common public key and its share related to this secret
-func (ds *DSecret) Exp() (*DKey, error) {
-	return nil, nil
-}
-
 // ADSecret is an arithmetic distirbuted secret
 type ADSecret struct {
 	DSecret
@@ -47,6 +38,74 @@ type ADSecret struct {
 type TDSecret struct {
 	ADSecret
 	t uint16
+}
+
+// Reveal computes a join secret, which share is kept in tds.
+func (tds *TDSecret) Reveal() (*big.Int, error) {
+	// TODO: add EGReveal
+	toSend := [][]byte{tds.skShare.Bytes()}
+
+	secrets := make([]*big.Int, len(tds.egs))
+
+	check := func(pid uint16, data []byte) error {
+		// TODO: check zkpok
+		secrets[pid] = new(big.Int).SetBytes(data)
+		return nil
+	}
+
+	nProc := len(tds.egs)
+	if err := tds.server.Round(toSend, check); err != nil {
+		if err, ok := err.(*sync.RoundError); ok && err.Missing() != nil && nProc-len(err.Missing()) < int(tds.t) {
+			return nil, err
+		}
+	}
+
+	sum := big.NewInt(0)
+	for _, secret := range secrets {
+		if secret == nil {
+			sum.Add(sum, tds.skShare)
+		} else {
+			sum.Add(sum, secret)
+		}
+	}
+
+	return sum, nil
+}
+
+// Exp computes a common public key and its share related to this secret
+func (tds *TDSecret) Exp() (*TDKey, error) {
+	// TODO: keep it somewhere
+	group := curve.NewSecp256k1Group()
+	tdk := &TDKey{}
+	tdk.secret = tds
+	tdk.pkShare = group.ScalarBaseMult(tds.skShare)
+
+	// TODO: add EGRefresh
+	toSend := [][]byte{group.Marshal(tdk.pkShare)}
+
+	tdk.pkShares = make([]curve.Point, len(tds.egs))
+
+	check := func(pid uint16, data []byte) error {
+		// TODO: check zkpok
+		var err error
+		tdk.pkShares[pid], err = group.Unmarshal(data)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+
+	nProc := len(tds.egs)
+	if err := tds.server.Round(toSend, check); err != nil {
+		if rErr, ok := err.(*sync.RoundError); ok && rErr.Missing() != nil && nProc-len(rErr.Missing()) < int(tds.t) {
+			return nil, err
+		}
+	}
+
+	// TODO: use Lagrange interpolation
+	tdk.pk = tdk.pkShare
+
+	return tdk, nil
 }
 
 // Threshold returns the number of parties that must collude to reveal the secret
@@ -109,4 +168,39 @@ func Gen(label string, server sync.Server, egf *commitment.ElGamalFactory, nProc
 	}
 
 	return ads, nil
+}
+
+// Lin computes locally a linear combination of the secrets
+func Lin(alpha, beta *big.Int, a, b *TDSecret, cLabel string) *TDSecret {
+	tds := &TDSecret{}
+	tds.label = cLabel
+	tds.server = a.server
+	tds.egf = a.egf
+	tds.t = a.t
+
+	tds.skShare = new(big.Int).Mul(alpha, a.skShare)
+	tmp := new(big.Int).Mul(beta, b.skShare)
+	tds.skShare.Add(tds.skShare, tmp)
+
+	makeEGLin := func(aeg, beg *commitment.ElGamal) *commitment.ElGamal {
+		result := tds.egf.Neutral()
+		result.Compose(result, aeg)
+		result.Exp(result, alpha)
+		tmp := tds.egf.Neutral()
+		tmp.Compose(tmp, beg)
+		tmp.Exp(tmp, beta)
+		result.Compose(result, tmp)
+
+		return result
+	}
+
+	tds.eg = makeEGLin(a.eg, b.eg)
+	tds.egs = make([]*commitment.ElGamal, len(a.egs))
+	for pid, eg := range a.egs {
+		if eg != nil {
+			tds.egs[pid] = makeEGLin(a.egs[pid], b.egs[pid])
+		}
+	}
+
+	return tds
 }

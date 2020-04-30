@@ -30,20 +30,15 @@ func (dk *DKey) PublicKey() curve.Point {
 	return dk.pk
 }
 
-// ADKey is an arithmetic distirbuted key
-type ADKey struct {
-	secret ADSecret
-}
-
 // TDKey is a thresholded distirbuted key
 type TDKey struct {
-	ADKey
-	t uint16
+	DKey
+	secret *TDSecret
 }
 
 // Threshold returns the number of parties that must collude to reveal the secret
 func (tdk TDKey) Threshold() uint16 {
-	return tdk.t
+	return tdk.secret.t
 }
 
 // NMCtmp is a temporary placeholder
