@@ -107,7 +107,7 @@ func (p *Protocol) Sign(message *big.Int) (*Signature, error) {
 		return nil, err
 	}
 
-	alpha, beta := message.Div(message, tau), r.Div(r, tau)
+	alpha, beta := new(big.Int).Div(message, tau), r.Div(r, tau)
 	sTDSecret := arith.Lin(alpha, beta, ps.rho, ps.eta, "s")
 
 	s, err := sTDSecret.Reveal()

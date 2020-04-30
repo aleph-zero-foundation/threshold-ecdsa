@@ -47,7 +47,7 @@ var _ = Describe("Secret Test", func() {
 		group = curve.NewSecp256k1Group()
 	})
 
-	JustAfterEach(func() {
+	AfterEach(func() {
 		tests.CloseNetwork(netservs)
 	})
 
