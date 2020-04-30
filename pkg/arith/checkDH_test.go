@@ -3,14 +3,18 @@ package arith_test
 import (
 	"math/big"
 	"math/rand"
+	stdsync "sync"
 	"time"
+
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
+
+	"gitlab.com/alephledger/threshold-ecdsa/pkg/arith"
+	"gitlab.com/alephledger/threshold-ecdsa/pkg/curve"
+	"gitlab.com/alephledger/threshold-ecdsa/pkg/sync"
 
 	"gitlab.com/alephledger/core-go/pkg/network"
 	"gitlab.com/alephledger/core-go/pkg/tests"
-	"gitlab.com/alephledger/threshold-ecdsa/pkg/arith"
-	"gitlab.com/alephledger/threshold-ecdsa/pkg/crypto/commitment"
-	"gitlab.com/alephledger/threshold-ecdsa/pkg/curve"
-	"gitlab.com/alephledger/threshold-ecdsa/pkg/sync"
 )
 
 var _ = Describe("Secret Test", func() {
@@ -21,7 +25,6 @@ var _ = Describe("Secret Test", func() {
 		syncservs []sync.Server
 		roundTime time.Duration
 		start     time.Time
-		label     string
 		wg        stdsync.WaitGroup
 		errors    []error
 		group     curve.Group
@@ -62,9 +65,10 @@ var _ = Describe("Secret Test", func() {
 		Describe("Checking values with CheckDH", func() {
 
 			var (
-				keys []*arith.DKey
-				u    curve.Point
-				v    curve.Point
+				keys    []*arith.DKey
+				queries []func(u, v curve.Point, group curve.Group) error
+				u       curve.Point
+				v       curve.Point
 			)
 
 			Context("Alice and bob are honest and alive", func() {
@@ -72,10 +76,9 @@ var _ = Describe("Secret Test", func() {
 				BeforeEach(func() {
 					keys = make([]*arith.DKey, nProc)
 					errors = make([]error, nProc)
-					egsk = group.ScalarBaseMult(big.NewInt(rand.Int63()))
-					egf = commitment.NewElGamalFactory(egsk)
 
-					//How to create DKEY
+					keys[alice] = arith.NewDKey(arith.NewDSecret("alice", big.NewInt(1), syncservs[alice]), group.Gen(), []curve.Point{nil, group.Gen()}, group)
+					keys[bob] = arith.NewDKey(arith.NewDSecret("alice", big.NewInt(1), syncservs[bob]), group.Gen(), []curve.Point{group.Gen(), nil}, group)
 
 					u = group.ScalarBaseMult(big.NewInt(rand.Int63()))
 					v = group.ScalarBaseMult(big.NewInt(rand.Int63()))
@@ -86,11 +89,11 @@ var _ = Describe("Secret Test", func() {
 					wg.Add(int(nProc))
 					go func() {
 						defer wg.Done()
-						query[alice], errors[alice] = arith.CheckDH(keys[alice])
+						queries[alice], errors[alice] = arith.CheckDH(keys[alice])
 					}()
 					go func() {
 						defer wg.Done()
-						query[bob], errors[bob] = arith.CheckDH(keys[bob])
+						queries[bob], errors[bob] = arith.CheckDH(keys[bob])
 					}()
 					wg.Wait()
 
@@ -100,11 +103,11 @@ var _ = Describe("Secret Test", func() {
 					wg.Add(int(nProc))
 					go func() {
 						defer wg.Done()
-						errors[alice] = query[alice](u, v, group)
+						errors[alice] = queries[alice](u, v, group)
 					}()
 					go func() {
 						defer wg.Done()
-						errors[bob] = query[bob](u, v, group)
+						errors[bob] = queries[bob](u, v, group)
 					}()
 					wg.Wait()
 
