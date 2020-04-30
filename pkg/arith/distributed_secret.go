@@ -20,6 +20,15 @@ type DSecret struct {
 	server  sync.Server
 }
 
+// NewDSecret returns a pointer to new DSecret instance
+func NewDSecret(label string, skShare *big.Int, server sync.Server) *DSecret {
+	return &DSecret{
+		label:   label,
+		skShare: skShare,
+		server:  server,
+	}
+}
+
 // Label returns the name of the variable
 func (ds *DSecret) Label() string {
 	return ds.label
@@ -117,7 +126,7 @@ func (tds TDSecret) Threshold() uint16 {
 func Gen(label string, server sync.Server, egf *commitment.ElGamalFactory, nProc uint16) (*ADSecret, error) {
 	var err error
 	// create a secret
-	ads := &ADSecret{DSecret: DSecret{label: label, server: server}, egf: egf}
+	ads := &ADSecret{DSecret: *NewDSecret(label, nil, server), egf: egf}
 	if ads.skShare, err = rand.Int(randReader, Q); err != nil {
 		return nil, err
 	}

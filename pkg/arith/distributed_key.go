@@ -20,6 +20,16 @@ type DKey struct {
 	pkShares []curve.Point
 }
 
+// NewDKey returns a pointer to new DKey instance
+func NewDKey(secret *DSecret, pk, pkShare curve.Point, pkShares []curve.Point) *DKey {
+	return &DKey{
+		secret:   secret,
+		pk:       pk,
+		pkShare:  pkShare,
+		pkShares: pkShares,
+	}
+}
+
 // Label returns the name of the variable
 func (dk *DKey) Label() string {
 	return dk.secret.Label()
@@ -65,14 +75,8 @@ func GenExpReveal(label string, server sync.Server, nProc uint16, group curve.Gr
 	if err != nil {
 		return nil, err
 	}
-	DSecret := &DSecret{
-		label:   label,
-		skShare: skShare,
-		server:  server,
-	}
-	dk := &DKey{secret: DSecret}
-
-	dk.pkShare = group.ScalarBaseMult(DSecret.skShare)
+	DSecret := NewDSecret(label, skShare, server)
+	dk := NewDKey(DSecret, nil, group.ScalarBaseMult(DSecret.skShare), make([]curve.Point, nProc))
 
 	// Round 1: commmit to (g^{a_k}, pi_k)
 	// TODO: replace with a proper zkpok and nmc when it's ready
@@ -124,7 +128,6 @@ func GenExpReveal(label string, server sync.Server, nProc uint16, group curve.Gr
 		return nil, err
 	}
 
-	dk.pkShares = make([]curve.Point, nProc)
 	check = func(pid uint16, data []byte) error {
 		zkpBytesLen := binary.LittleEndian.Uint16(data[:2])
 		zkp := &zkpok.NoopZKproof{}
