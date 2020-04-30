@@ -126,7 +126,7 @@ func (tds TDSecret) Threshold() uint16 {
 func Gen(label string, server sync.Server, egf *commitment.ElGamalFactory, nProc uint16) (*ADSecret, error) {
 	var err error
 	// create a secret
-	ads := &ADSecret{DSecret: *NewDSecret(label, nil, server), egf: egf}
+	ads := &ADSecret{DSecret: DSecret{label: label, server: server}, egf: egf}
 	if ads.skShare, err = rand.Int(randReader, Q); err != nil {
 		return nil, err
 	}
