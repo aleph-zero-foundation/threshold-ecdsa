@@ -3,7 +3,6 @@ package arith
 import (
 	"bytes"
 	"crypto/rand"
-	"encoding/gob"
 	"fmt"
 	"math/big"
 
@@ -43,14 +42,13 @@ func Mult(a, b *ADSecret, cLabel string) (c *ADSecret, err error) {
 	}
 	c.eg = a.egf.Create(c.skShare, c.r)
 
-	toSendBuf := bytes.Buffer{}
-	enc := gob.NewEncoder(&toSendBuf)
+	toSendBuf := &bytes.Buffer{}
 	// TODO: replace the following commitment and check with EGKnow
 	egknow := zkpok.NoopZKproof{}
-	if err := enc.Encode(egknow); err != nil {
+	if err := egknow.Encode(toSendBuf); err != nil {
 		return nil, err
 	}
-	if err := enc.Encode(c.eg); err != nil {
+	if err := c.eg.Encode(toSendBuf); err != nil {
 		return nil, err
 	}
 
@@ -58,8 +56,7 @@ func Mult(a, b *ADSecret, cLabel string) (c *ADSecret, err error) {
 	check := func(pid uint16, data []byte) error {
 		var egknow zkpok.NoopZKproof
 		buf := bytes.NewBuffer(data)
-		dec := gob.NewDecoder(buf)
-		if err := dec.Decode(&egknow); err != nil {
+		if err := egknow.Decode(buf); err != nil {
 			return fmt.Errorf("decode: egknow %v", err)
 		}
 		if !egknow.Verify() {
@@ -67,7 +64,7 @@ func Mult(a, b *ADSecret, cLabel string) (c *ADSecret, err error) {
 		}
 
 		eg := commitment.ElGamal{}
-		if err := dec.Decode(&eg); err != nil {
+		if err := eg.Decode(buf); err != nil {
 			return fmt.Errorf("decode: ElGamal %v", err)
 		}
 
@@ -91,11 +88,10 @@ func Mult(a, b *ADSecret, cLabel string) (c *ADSecret, err error) {
 	toSendBuf.Reset()
 	// TODO: replace the following commitment and check with EGKnow
 	egexp := zkpok.NoopZKproof{}
-	enc = gob.NewEncoder(&toSendBuf)
-	if err := enc.Encode(egexp); err != nil {
+	if err := egexp.Encode(toSendBuf); err != nil {
 		return nil, err
 	}
-	if err := enc.Encode(baShareEG); err != nil {
+	if err := baShareEG.Encode(toSendBuf); err != nil {
 		return nil, err
 	}
 
@@ -103,8 +99,7 @@ func Mult(a, b *ADSecret, cLabel string) (c *ADSecret, err error) {
 	check = func(pid uint16, data []byte) error {
 		var egexp zkpok.NoopZKproof
 		buf := bytes.NewBuffer(data)
-		dec := gob.NewDecoder(buf)
-		if err := dec.Decode(&egexp); err != nil {
+		if err := egexp.Decode(buf); err != nil {
 			return fmt.Errorf("decode: egknow %v", err)
 		}
 		if !egknow.Verify() {
@@ -112,7 +107,7 @@ func Mult(a, b *ADSecret, cLabel string) (c *ADSecret, err error) {
 		}
 
 		eg := commitment.ElGamal{}
-		if err := dec.Decode(&eg); err != nil {
+		if err := eg.Decode(buf); err != nil {
 			return fmt.Errorf("decode: ElGamal %v", err)
 		}
 
