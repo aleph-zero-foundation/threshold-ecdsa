@@ -10,12 +10,8 @@ import (
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/curve"
 )
 
-var (
-	reader = rand.Reader
-)
-
 //CheckDH returns function to query if two values should be accepted
-func CheckDH(key *DKey) (func(*curve.Point, *curve.Point, curve.Group) (bool, error), error) {
+func CheckDH(key *DKey) (func(curve.Point, curve.Point, curve.Group) error, error) {
 
 	nProc := len(key.pks)
 
@@ -49,22 +45,26 @@ func CheckDH(key *DKey) (func(*curve.Point, *curve.Point, curve.Group) (bool, er
 		return nil, err
 	}
 
-	return func(u, v *curve.Point, group curve.Group) (bool, error) {
+	return func(u, v curve.Point, group curve.Group) (bool, error) {
 		return query(u, v, group, key)
 	}, nil
 }
 
-func query(u, v *curve.Point, group curve.Group, key *DKey) (bool, error) {
+func query(u, v curve.Point, group curve.Group, key *DKey) error {
 
 	nProc := len(key.pks)
 	var err error
 
 	//STEP 1 Sample values, compute uK, vK and piK, commit to them
-	alpha, _ := rand.Int(reader, group.Order())
-	beta, _ := rand.Int(reader, group.Order())
+	if alpha, err := rand.Int(randReader, group.Order()); err != nil {
+		return nil, err
+	}
+	if beta, err := rand.Int(randReader, group.Order()); err != nil {
+		return nil, err
+	}
 
-	testValueShare := group.Add(group.ScalarMult(u, alpha), group.ScalarMult(group.Gen, beta))
-	verifyValueShare := group.Add(group.ScalarMult(v, alpha), group.ScalarMult(key.pk, beta)) //key.pk is group generator H
+	testValueShare := group.Add(group.ScalarMult(u, alpha), group.ScalarMult(group.Gen(), beta))
+	verifyValueShare := group.Add(group.ScalarMult(v, alpha), group.ScalarMult(key.pk, beta))
 
 	toSendBuf := bytes.Buffer{}
 	toSend := [][]byte{nil}
@@ -72,7 +72,7 @@ func query(u, v *curve.Point, group curve.Group, key *DKey) (bool, error) {
 	// TODO: replace the following commitment and check with RRerand
 	rrerand := zkpok.NoopZKproof{}
 
-	buildNMC := func(testValueShare, verifyValueShare *curve.Point, group curve.Group, rrerand *zkpok.NoopZKproof) (*NMCtmp, error) {
+	buildNMC := func(testValueShare, verifyValueShare curve.Point, group curve.Group, rrerand *zkpok.NoopZKproof) (*NMCtmp, error) {
 		dataBuf, zkpBuf := bytes.Buffer{}, bytes.Buffer{}
 
 		p := group.Marshal(testValueShare)
@@ -96,12 +96,12 @@ func query(u, v *curve.Point, group curve.Group, key *DKey) (bool, error) {
 
 	nmc, err := buildNMC(&testValueShare, &verifyValueShare, group, &rrerand)
 	if err != nil {
-		return false, err
+		return err
 	}
 
 	enc = gob.NewEncoder(&toSendBuf)
 	if err := enc.Encode(nmc); err != nil {
-		return false, err
+		return err
 	}
 
 	nmcs := make([]*NMCtmp, nProc)
@@ -116,7 +116,7 @@ func query(u, v *curve.Point, group curve.Group, key *DKey) (bool, error) {
 
 	toSend[0] = toSendBuf.Bytes()
 	if err := key.secret.server.Round(toSend, check); err != nil {
-		return false, err
+		return err
 	}
 
 	//STEP 2 Decommit to previously published values, verify proofs and compute (u', v')
@@ -124,17 +124,22 @@ func query(u, v *curve.Point, group curve.Group, key *DKey) (bool, error) {
 	toSendBuf.Reset()
 	enc = gob.NewEncoder(&toSendBuf)
 	if err := enc.Encode(rrerand); err != nil {
-		return false, err
+		return err
 	}
-	if err := enc.Encode(verifyValueShare); err != nil {
-		return false, err
+	p := group.Marshal(verifyValueShare)
+	if _, err := toSendBuf.Write(p); err != nil {
+		return err
 	}
-	if err := enc.Encode(testValueShare); err != nil {
-		return false, err
+	p = group.Marshal(testValueShare)
+	if _, err := toSendBuf.Write(p); err != nil {
+		return err
 	}
 
 	testValue := group.Neutral()
 	verifyValue := group.Neutral()
+
+	testValueShares := make([]curve.Point, nProc)
+	verifyValueShares := make([]curve.Point, nProc)
 
 	check = func(pid uint16, data []byte) error {
 		var rrerand zkpok.NoopZKproof
@@ -146,15 +151,11 @@ func query(u, v *curve.Point, group curve.Group, key *DKey) (bool, error) {
 			return fmt.Errorf("Wrong rrerand proof")
 		}
 
-		var verifyValueShare *curve.Point
-		if err := dec.Decode(&verifyValueShare); err != nil {
-			return err
-		}
+		verifyValueShare := group.Unmarshal(data) //How to move data
+		verifyValueShares[pid] = verifyValueShare
 
-		var testValueShare *curve.Point
-		if err := dec.Decode(&testValueShare); err != nil {
-			return err
-		}
+		testValueShare := group.Unmarshal(data)
+		testValueShares[pid] = testValueShare
 
 		nmc, err := buildNMC(testValueShare, verifyValueShare, group, &rrerand)
 		if err != nil {
@@ -165,15 +166,17 @@ func query(u, v *curve.Point, group curve.Group, key *DKey) (bool, error) {
 			return err
 		}
 
-		testValue = group.Add(testValue, testValueShare)
-		verifyValue = group.Add(verifyValue, verifyValueShare)
-
 		return nil
 	}
 
 	toSend[0] = toSendBuf.Bytes()
 	if err := key.secret.server.Round(toSend, check); err != nil {
-		return false, err
+		return err
+	}
+
+	for i := 0; i < nProc; i++ {
+		testValue = group.Add(testValue, testValueShares[i])
+		verifyValue = group.Add(verifyValue, verifyValueShares[i])
 	}
 
 	testValue = group.ScalarMult(testValue, key.secret.secret)
@@ -183,22 +186,23 @@ func query(u, v *curve.Point, group curve.Group, key *DKey) (bool, error) {
 
 	toSendBuf.Reset()
 	regexp := zkpok.NoopZKproof{}
-	if err := enc.Encode(testValue); err != nil {
-		return false, err
+	p = group.Marshal(testValue)
+	if _, err := toSendBuf.Write(p); err != nil {
+		return err
 	}
 	if err := enc.Encode(regexp); err != nil {
-		return false, err
+		return err
 	}
 	regexps := make([]zkpok.NoopZKproof, nProc)
+	testValues := make([]curve.Point, nProc)
 	check = func(pid uint16, data []byte) error {
 		var regexp zkpok.NoopZKproof
 		buf := bytes.NewBuffer(data)
 		dec := gob.NewDecoder(buf)
 
-		var testValue *curve.Point
-		if err := dec.Decode(&testValue); err != nil {
-			return err
-		}
+		testValue := group.Unmarshal(data)
+		testValues[pid] = testValue
+
 		if err := dec.Decode(&regexp); err != nil {
 			return fmt.Errorf("decode: regexp %v", err)
 		}
@@ -206,22 +210,24 @@ func query(u, v *curve.Point, group curve.Group, key *DKey) (bool, error) {
 			return fmt.Errorf("Wrong regexp proof")
 		}
 
-		group.Add(finalTestValue, testValue)
-
 		regexps[pid] = regexp
 		return nil
 	}
 
 	toSend[0] = toSendBuf.Bytes()
 	if err := key.secret.server.Round(toSend, check); err != nil {
-		return false, err
+		return err
+	}
+
+	for i := 0; i < nProc; i++ {
+		finalTestValue = group.Add(finalTestValue, testValues[i])
 	}
 
 	//Check if everything is correct
 
 	if !(group.Equal(finalTestValue, verifyValue)) {
-		return false, fmt.Errorf("Wrong value")
+		return fmt.Errorf("Wrong value")
 	}
 
-	return true, nil
+	return nil
 }
