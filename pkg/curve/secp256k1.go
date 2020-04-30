@@ -2,6 +2,8 @@ package curve
 
 import (
 	"encoding/binary"
+	"fmt"
+	"io"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/crypto/secp256k1"
@@ -94,27 +96,58 @@ func (g sGroup) Equal(a Point, b Point) bool {
 	return (as.x.Cmp(bs.x) == 0) && (as.y.Cmp(bs.y) == 0)
 }
 
-//Result for neutral element is [0 0 0 0]
-func (g sGroup) Marshal(a Point) []byte {
-	arr := make([]byte, 4)
-	if a.(sPoint).x == nil {
-		binary.BigEndian.PutUint32(arr, uint32(0))
-		return arr
+func (g sGroup) Encode(a Point, w io.Writer) error {
+	buf := make([]byte, 4)
+	as := a.(sPoint)
+	// encoding of a neutral element is [0 0 0 0]
+	if as.x == nil {
+		binary.BigEndian.PutUint32(buf, uint32(0))
+		if _, err := w.Write(buf); err != nil {
+			return err
+		}
+		return nil
 	}
-	binary.BigEndian.PutUint32(arr, uint32(len(a.(sPoint).x.Bytes())))
+	lenX := uint32(len(as.x.Bytes()))
+	lenY := uint32(len(as.y.Bytes()))
+	buf = make([]byte, 8, 8+lenX+lenY)
+	binary.BigEndian.PutUint32(buf[:4], lenX)
+	binary.BigEndian.PutUint32(buf[4:8], lenY)
+	buf = append(buf, as.x.Bytes()...)
+	buf = append(buf, as.y.Bytes()...)
 
-	arr = append(arr, a.(sPoint).x.Bytes()...)
-	arr = append(arr, a.(sPoint).y.Bytes()...)
+	if _, err := w.Write(buf); err != nil {
+		return err
+	}
 
-	return arr
+	return nil
 }
 
-func (g sGroup) Unmarshal(b []byte) (Point, error) {
-	length := binary.BigEndian.Uint32(b[0:4])
-	if length == 0 {
+func (g sGroup) Decode(r io.Reader) (Point, error) {
+	lenBytes := make([]byte, 8)
+	n, err := r.Read(lenBytes)
+	if err != nil {
+		return nil, err
+	}
+	if n < 8 {
+		return nil, fmt.Errorf("Too few bytes for lenX and lenY: expected 8, got %d", n)
+	}
+
+	lenX := binary.BigEndian.Uint32(lenBytes[:4])
+	if lenX == 0 {
 		return sPoint{nil, nil}, nil
 	}
-	resultX := new(big.Int).SetBytes(b[4 : 4+length])
-	resultY := new(big.Int).SetBytes(b[4+length : len(b)])
-	return sPoint{resultX, resultY}, nil
+
+	lenY := binary.BigEndian.Uint32(lenBytes[4:8])
+	xyBytes := make([]byte, lenX+lenY)
+	n, err = r.Read(xyBytes)
+	if err != nil {
+		return nil, err
+	}
+	if uint32(n) < lenX+lenY {
+		return nil, fmt.Errorf("Too few bytes for lenX and lenY: expected %d, got %d", lenX+lenY, n)
+	}
+	x := new(big.Int).SetBytes(xyBytes[:lenX])
+	y := new(big.Int).SetBytes(xyBytes[lenX:])
+
+	return sPoint{x, y}, nil
 }

@@ -1,6 +1,9 @@
 package curve
 
-import "math/big"
+import (
+	"io"
+	"math/big"
+)
 
 // Point is an element of a group on an elliptic curve
 type Point interface {
@@ -16,6 +19,6 @@ type Group interface {
 	ScalarMult(Point, *big.Int) Point
 	ScalarBaseMult(*big.Int) Point
 	Equal(Point, Point) bool
-	Marshal(Point) []byte
-	Unmarshal([]byte) (Point, error)
+	Encode(Point, io.Writer) error
+	Decode(io.Reader) (Point, error)
 }
