@@ -20,6 +20,15 @@ type DSecret struct {
 	server  sync.Server
 }
 
+// NewDSecret returns a pointer to new DSecret instance
+func NewDSecret(label string, skShare *big.Int, server sync.Server) *DSecret {
+	return &DSecret{
+		label:   label,
+		skShare: skShare,
+		server:  server,
+	}
+}
+
 // Label returns the name of the variable
 func (ds *DSecret) Label() string {
 	return ds.label

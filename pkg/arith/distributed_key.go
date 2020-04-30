@@ -20,6 +20,23 @@ type DKey struct {
 	pkShares []curve.Point
 }
 
+// NewDKey returns a pointer to new DKey instance
+func NewDKey(secret *DSecret, pkShare curve.Point, pkShares []curve.Point, group curve.Group) *DKey {
+	pk := pkShare
+	for _, pkOtherShare := range pkShares {
+		if pkOtherShare != nil {
+			pk = group.Add(pk, pkOtherShare)
+		}
+	}
+
+	return &DKey{
+		secret:   secret,
+		pk:       pk,
+		pkShare:  pkShare,
+		pkShares: pkShares,
+	}
+}
+
 // Label returns the name of the variable
 func (dk *DKey) Label() string {
 	return dk.secret.Label()
@@ -65,18 +82,12 @@ func GenExpReveal(label string, server sync.Server, nProc uint16, group curve.Gr
 	if err != nil {
 		return nil, err
 	}
-	DSecret := &DSecret{
-		label:   label,
-		skShare: skShare,
-		server:  server,
-	}
-	dk := &DKey{secret: DSecret}
-
-	dk.pkShare = group.ScalarBaseMult(DSecret.skShare)
+	DSecret := NewDSecret(label, skShare, server)
+	pkShare := group.ScalarBaseMult(DSecret.skShare)
 
 	// Round 1: commmit to (g^{a_k}, pi_k)
 	// TODO: replace with a proper zkpok and nmc when it's ready
-	dataBytes := group.Marshal(dk.pkShare)
+	dataBytes := group.Marshal(pkShare)
 
 	zkp := zkpok.NoopZKproof{}
 	zkpBytes, err := zkp.MarshalBinary()
@@ -120,11 +131,11 @@ func GenExpReveal(label string, server sync.Server, nProc uint16, group curve.Gr
 	if _, err = toSend.Write(buf); err != nil {
 		return nil, err
 	}
-	if _, err = toSend.Write(group.Marshal(dk.pkShare)); err != nil {
+	if _, err = toSend.Write(group.Marshal(pkShare)); err != nil {
 		return nil, err
 	}
 
-	dk.pkShares = make([]curve.Point, nProc)
+	pkShares := make([]curve.Point, nProc)
 	check = func(pid uint16, data []byte) error {
 		zkpBytesLen := binary.LittleEndian.Uint16(data[:2])
 		zkp := &zkpok.NoopZKproof{}
@@ -143,7 +154,7 @@ func GenExpReveal(label string, server sync.Server, nProc uint16, group curve.Gr
 			return err
 		}
 
-		dk.pkShares[pid] = cp
+		pkShares[pid] = cp
 
 		return nil
 	}
@@ -153,12 +164,5 @@ func GenExpReveal(label string, server sync.Server, nProc uint16, group curve.Gr
 		return nil, err
 	}
 
-	dk.pk = dk.pkShare
-	for _, pk := range dk.pkShares {
-		if pk != nil {
-			dk.pk = group.Add(dk.pk, pk)
-		}
-	}
-
-	return dk, nil
+	return NewDKey(DSecret, pkShare, pkShares, group), nil
 }
