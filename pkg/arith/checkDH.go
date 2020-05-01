@@ -99,7 +99,7 @@ func CheckDH(u, v curve.Point, group curve.Group, key *DKey) error {
 
 	check = func(pid uint16, data []byte) error {
 		buf := bytes.NewBuffer(data)
-
+		var err error
 		var verifyValueShare, testValueShare curve.Point
 		if verifyValueShare, err = group.Decode(buf); err != nil {
 			return err
