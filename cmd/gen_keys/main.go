@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/base64"
 	"encoding/binary"
 	"fmt"
 	"os"
@@ -28,7 +29,7 @@ func makeProcess(localAddr string) (*proc, error) {
 	return &proc{pubKey, privKey, localAddr}, nil
 }
 
-func encodePaillierPrivateKey(pk *paillier.PrivateKey) []byte {
+func encodePaillierPrivateKey(pk *paillier.PrivateKey) string {
 	lenN := len(pk.PublicKey.N.Bytes())
 	lenLambdaN := len(pk.LambdaN.Bytes())
 	lenPhiN := len(pk.PhiN.Bytes())
@@ -43,7 +44,7 @@ func encodePaillierPrivateKey(pk *paillier.PrivateKey) []byte {
 	binary.LittleEndian.PutUint16(buf[4+lenN+lenLambdaN:6+lenN+lenLambdaN], uint16(lenN))
 	copy(buf[6+lenN+lenLambdaN:], pk.PublicKey.N.Bytes())
 
-	return buf
+	return base64.StdEncoding.EncodeToString(buf)
 }
 
 // This program generates files with random keys and addresses for a committee of the specified size.
@@ -103,16 +104,19 @@ func main() {
 			return
 		}
 
-		pkBytes := encodePaillierPrivateKey(p.privateKey)
-		if _, err = f.Write(pkBytes); err != nil {
+		if _, err = f.WriteString(encodePaillierPrivateKey(p.privateKey)); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return
 		}
-		if _, err = f.Write([]byte(" ")); err != nil {
+		if _, err = f.WriteString(" "); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return
 		}
-		if _, err = f.Write([]byte(strconv.Itoa(pid))); err != nil {
+		if _, err = f.WriteString(strconv.Itoa(pid)); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return
+		}
+		if _, err = f.WriteString("\n"); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return
 		}
@@ -126,15 +130,15 @@ func main() {
 	defer f.Close()
 	for _, p := range processes {
 
-		if _, err := f.Write(p.publicKey.N.Bytes()); err != nil {
+		if _, err := f.WriteString(base64.StdEncoding.EncodeToString((p.publicKey.N.Bytes()))); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return
 		}
-		if _, err = f.Write([]byte("|")); err != nil {
+		if _, err = f.WriteString("|"); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return
 		}
-		if _, err = f.Write([]byte(p.localAddr)); err != nil {
+		if _, err = f.WriteString(p.localAddr); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return
 		}

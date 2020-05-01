@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/base64"
 	"encoding/binary"
 	"errors"
 	"flag"
@@ -36,23 +37,23 @@ func decodeBigInt(data []byte, name string) (*big.Int, error) {
 		return nil, fmt.Errorf("wrong encoding, data is too short. len(%s) is %d, while len(data) is %d", name, lenX, len(data[2:]))
 	}
 	return new(big.Int).SetBytes(data[2 : 2+lenX]), nil
-
 }
 
-func decodePaillierPrivateKey(data []byte) (*paillier.PrivateKey, error) {
+func decodePaillierPrivateKey(enc string) (*paillier.PrivateKey, error) {
+	data, err := base64.StdEncoding.DecodeString(enc)
+
 	pk := &paillier.PrivateKey{}
-	var err error
 	pk.PublicKey.N, err = decodeBigInt(data, "N")
 	if err != nil {
 		return nil, err
 	}
-	data = data[4+len(pk.PublicKey.N.Bytes()):]
+	data = data[2+len(pk.PublicKey.N.Bytes()):]
 
 	pk.LambdaN, err = decodeBigInt(data, "LambdaN")
 	if err != nil {
 		return nil, err
 	}
-	data = data[4+len(pk.LambdaN.Bytes()):]
+	data = data[2+len(pk.LambdaN.Bytes()):]
 
 	pk.PhiN, err = decodeBigInt(data, "PhiN")
 	if err != nil {
@@ -62,23 +63,30 @@ func decodePaillierPrivateKey(data []byte) (*paillier.PrivateKey, error) {
 	return pk, nil
 }
 
-func parseCommitteeLine(line string) (string, string, error) {
+func parseCommitteeLine(line string) (*paillier.PublicKey, string, error) {
 	s := strings.Split(line, "|")
 
 	if len(s) < 2 {
-		return "", "", errors.New("commitee line should be of the form:\npaillierKey|address")
+		return nil, "", errors.New("commitee line should be of the form:\npaillierKey|address")
 	}
-	pk, addr := s[0], s[1]
+	pkEnc, addr := s[0], s[1]
 
-	if len(pk) == 0 {
-		return "", "", errors.New("empty paillier key")
+	if len(pkEnc) == 0 {
+		return nil, "", errors.New("empty paillier key")
 	}
 	if len(addr) == 0 {
-		return "", "", errors.New("empty address")
+		return nil, "", errors.New("empty address")
 	}
 	if len(strings.Split(addr, ":")) < 2 {
-		return "", "", errors.New("malformed address")
+		return nil, "", errors.New("malformed address")
 	}
+
+	pk := &paillier.PublicKey{}
+	pkBytes, err := base64.StdEncoding.DecodeString(pkEnc)
+	if err != nil {
+		return nil, "", errors.New("malformed address")
+	}
+	pk.N = new(big.Int).SetBytes(pkBytes)
 
 	return pk, addr, nil
 }
@@ -103,10 +111,7 @@ func getCommittee(filename string) (*committee, error) {
 			return nil, err
 		}
 
-		publicKey := &paillier.PublicKey{}
-		publicKey.N.SetBytes([]byte(pk))
-
-		c.publicKeys = append(c.publicKeys, publicKey)
+		c.publicKeys = append(c.publicKeys, pk)
 		c.addresses = append(c.addresses, addr)
 	}
 
@@ -122,7 +127,7 @@ func getCommittee(filename string) (*committee, error) {
 
 func getMember(filename string) (*member, error) {
 	if filename == "" {
-		return nil, errors.New("provided keys_adds filename is empty")
+		return nil, errors.New("provided pk filename is empty")
 	}
 
 	m := &member{}
@@ -138,7 +143,7 @@ func getMember(filename string) (*member, error) {
 	if !scanner.Scan() {
 		return nil, errors.New("empty member file")
 	}
-	m.privateKey, err = decodePaillierPrivateKey([]byte(scanner.Text()))
+	m.privateKey, err = decodePaillierPrivateKey(scanner.Text())
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +173,7 @@ type cliOptions struct {
 
 func getOptions() *cliOptions {
 	var options cliOptions
-	flag.StringVar(&options.keysAddrsFilename, "pk_pid", "", "a file with a private key and process id")
+	flag.StringVar(&options.pkPidFilename, "pk", "", "a file with a private key and process id")
 	flag.StringVar(&options.keysAddrsFilename, "keys_addrs", "", "a file with keys and associated addresses")
 	flag.StringVar(&options.startTime, "startTime", "", "time at which start the protocol")
 	flag.StringVar(&options.roundDuration, "roundDuration", "", "duration of a round")
@@ -186,7 +191,7 @@ func main() {
 
 	member, err := getMember(options.pkPidFilename)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Invalid pk_pid file \"%s\", because: %v.\n", options.keysAddrsFilename, err)
+		fmt.Fprintln(os.Stderr, err)
 		return
 	}
 
