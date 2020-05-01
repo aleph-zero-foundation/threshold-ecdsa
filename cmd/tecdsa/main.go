@@ -31,11 +31,11 @@ type committee struct {
 }
 
 func decodeBigInt(data []byte, name string) (*big.Int, error) {
-	lenX := binary.LittleEndian.Uint32(data[:4])
-	if len(data) < 4+int(lenX) {
-		return nil, fmt.Errorf("wrong encoding, data is too short. len(%s) is %d, while len(data) is %d", name, lenX, len(data[4:]))
+	lenX := binary.LittleEndian.Uint16(data[:2])
+	if len(data) < 2+int(lenX) {
+		return nil, fmt.Errorf("wrong encoding, data is too short. len(%s) is %d, while len(data) is %d", name, lenX, len(data[2:]))
 	}
-	return new(big.Int).SetBytes(data[4 : 4+lenX]), nil
+	return new(big.Int).SetBytes(data[2 : 2+lenX]), nil
 
 }
 
