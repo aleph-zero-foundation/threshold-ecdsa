@@ -65,10 +65,9 @@ var _ = Describe("Secret Test", func() {
 		Describe("Checking values with CheckDH", func() {
 
 			var (
-				keys    []*arith.DKey
-				queries []func(u, v curve.Point, group curve.Group) error
-				u       curve.Point
-				v       curve.Point
+				keys []*arith.DKey
+				u    curve.Point
+				v    curve.Point
 			)
 
 			Context("Alice and bob are honest and alive", func() {
@@ -76,7 +75,6 @@ var _ = Describe("Secret Test", func() {
 				It("Should finish for alice and bob", func() {
 					keys = make([]*arith.DKey, nProc)
 					errors = make([]error, nProc)
-					queries = make([]func(u, v curve.Point, group curve.Group) error, nProc)
 
 					aSecret := arith.NewDSecret("alice", big.NewInt(1), syncservs[alice])
 					bSecret := arith.NewDSecret("alice", big.NewInt(1), syncservs[bob])
@@ -90,25 +88,11 @@ var _ = Describe("Secret Test", func() {
 					wg.Add(int(nProc))
 					go func() {
 						defer wg.Done()
-						queries[alice], errors[alice] = arith.CheckDH(keys[alice])
+						errors[alice] = arith.CheckDH(u, v, group, keys[alice])
 					}()
 					go func() {
 						defer wg.Done()
-						queries[bob], errors[bob] = arith.CheckDH(keys[bob])
-					}()
-					wg.Wait()
-
-					Expect(errors[alice]).NotTo(HaveOccurred())
-					Expect(errors[bob]).NotTo(HaveOccurred())
-
-					wg.Add(int(nProc))
-					go func() {
-						defer wg.Done()
-						errors[alice] = queries[alice](u, v, group)
-					}()
-					go func() {
-						defer wg.Done()
-						errors[bob] = queries[bob](u, v, group)
+						errors[bob] = arith.CheckDH(u, v, group, keys[bob])
 					}()
 					wg.Wait()
 

@@ -10,46 +10,8 @@ import (
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/curve"
 )
 
-//CheckDH returns function to query if two values should be accepted
-func CheckDH(key *DKey) (func(curve.Point, curve.Point, curve.Group) error, error) {
-
-	nProc := len(key.pkShares)
-
-	// STEP 1. Publish a proof of knowledge of d_k
-	toSendBuf := &bytes.Buffer{}
-	toSend := [][]byte{nil}
-	// TODO: replace the following commitment and check with RDLog
-	rdlog := zkpok.NoopZKproof{}
-	if err := rdlog.Encode(toSendBuf); err != nil {
-		return nil, err
-	}
-	rdlogs := make([]zkpok.NoopZKproof, nProc)
-	check := func(pid uint16, data []byte) error {
-		buf := bytes.NewBuffer(data)
-
-		var rdlog zkpok.NoopZKproof
-		if err := rdlog.Decode(buf); err != nil {
-			return fmt.Errorf("decode: rdlog %v", err)
-		}
-		if !rdlog.Verify() {
-			return fmt.Errorf("Wrong rdlog proof")
-		}
-
-		rdlogs[pid] = rdlog
-		return nil
-	}
-
-	toSend[0] = toSendBuf.Bytes()
-	if err := key.secret.server.Round(toSend, check); err != nil {
-		return nil, err
-	}
-
-	return func(u, v curve.Point, group curve.Group) error {
-		return query(u, v, group, key)
-	}, nil
-}
-
-func query(u, v curve.Point, group curve.Group, key *DKey) error {
+//CheckDH checks if given values are DF triple
+func CheckDH(u, v curve.Point, group curve.Group, key *DKey) error {
 
 	nProc := len(key.pkShares)
 	var err error
@@ -198,7 +160,6 @@ func query(u, v curve.Point, group curve.Group, key *DKey) error {
 		return err
 	}
 
-	regexps := make([]zkpok.NoopZKproof, nProc)
 	testValues := make([]curve.Point, nProc)
 
 	check = func(pid uint16, data []byte) error {
@@ -219,7 +180,6 @@ func query(u, v curve.Point, group curve.Group, key *DKey) error {
 			return fmt.Errorf("Wrong regexp proof")
 		}
 
-		regexps[pid] = regexp
 		return nil
 	}
 
