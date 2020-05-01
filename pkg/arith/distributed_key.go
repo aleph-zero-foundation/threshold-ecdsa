@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/binary"
-	"encoding/gob"
 	"fmt"
+	"io"
 
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/crypto/zkpok"
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/curve"
@@ -60,15 +60,65 @@ func (tdk TDKey) Threshold() uint16 {
 
 // NMCtmp is a temporary placeholder
 type NMCtmp struct {
-	DataBytes, ZkpBytes []byte
+	dataBytes, zkpBytes []byte
+}
+
+func (nmc *NMCtmp) encode(w io.Writer) error {
+	lenBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint32(lenBytes[:4], uint32(len(nmc.dataBytes)))
+	binary.LittleEndian.PutUint32(lenBytes[4:8], uint32(len(nmc.zkpBytes)))
+	if _, err := w.Write(lenBytes); err != nil {
+		return err
+	}
+	if _, err := w.Write(nmc.dataBytes); err != nil {
+		return err
+	}
+	if _, err := w.Write(nmc.zkpBytes); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (nmc *NMCtmp) decode(r io.Reader) error {
+	lenBytes := make([]byte, 8)
+	n, err := r.Read(lenBytes)
+	if err != nil {
+		return err
+	}
+	if n < 8 {
+		return fmt.Errorf("nmc wrong number of bytes in decode")
+	}
+
+	lenData := int(binary.LittleEndian.Uint32(lenBytes[:4]))
+	nmc.dataBytes = make([]byte, lenData)
+	n, err = r.Read(nmc.dataBytes)
+	if err != nil {
+		return err
+	}
+	if n < lenData {
+		return fmt.Errorf("nmc wrong number of dataBytes in decode")
+	}
+
+	lenZkp := int(binary.LittleEndian.Uint32(lenBytes[4:8]))
+	nmc.zkpBytes = make([]byte, lenZkp)
+	n, err = r.Read(nmc.zkpBytes)
+	if err != nil {
+		return err
+	}
+	if n < lenZkp {
+		return fmt.Errorf("nmc wrong number of zkpBytes in decode")
+	}
+
+	return nil
+
 }
 
 // Verify tests if ncm is a commitment to given args
 func (nmc *NMCtmp) Verify(dataBytes, zkpBytes []byte) error {
-	if !bytes.Equal(nmc.DataBytes, dataBytes) {
+	if !bytes.Equal(nmc.dataBytes, dataBytes) {
 		return fmt.Errorf("wrong data bytes")
 	}
-	if !bytes.Equal(nmc.ZkpBytes, zkpBytes) {
+	if !bytes.Equal(nmc.zkpBytes, zkpBytes) {
 		return fmt.Errorf("wrong proof bytes")
 	}
 
@@ -82,75 +132,72 @@ func GenExpReveal(label string, server sync.Server, nProc uint16, group curve.Gr
 	if err != nil {
 		return nil, err
 	}
-	DSecret := NewDSecret(label, skShare, server)
-	pkShare := group.ScalarBaseMult(DSecret.skShare)
+	dSecret := NewDSecret(label, skShare, server)
+	pkShare := group.ScalarBaseMult(dSecret.skShare)
 
 	// Round 1: commmit to (g^{a_k}, pi_k)
-	// TODO: replace with a proper zkpok and nmc when it's ready
-	dataBytes := group.Marshal(pkShare)
-
-	zkp := zkpok.NoopZKproof{}
-	zkpBytes, err := zkp.MarshalBinary()
-	if err != nil {
+	// TODO: replace with a proper zkpok and nmc when it's ready, now it sends just the values
+	toSendBuf := &bytes.Buffer{}
+	if err = group.Encode(pkShare, toSendBuf); err != nil {
 		return nil, err
 	}
-	nmc := &NMCtmp{dataBytes, zkpBytes}
+	dataBytes := make([]byte, len(toSendBuf.Bytes()))
+	copy(dataBytes, toSendBuf.Bytes())
 
-	toSend := bytes.Buffer{}
-	enc := gob.NewEncoder(&toSend)
-	if err := enc.Encode(nmc); err != nil {
+	zkp := zkpok.NoopZKproof{}
+	if err = zkp.Encode(toSendBuf); err != nil {
+		return nil, err
+	}
+	zkpBytes := toSendBuf.Bytes()[len(dataBytes):]
+
+	nmc := &NMCtmp{dataBytes, zkpBytes}
+	toSendBuf.Reset()
+	if err = nmc.encode(toSendBuf); err != nil {
 		return nil, err
 	}
 
 	// TODO: sth we can check here?
 	nmcs := make([]*NMCtmp, nProc)
 	check := func(pid uint16, data []byte) error {
-
-		var nmc NMCtmp
-		dec := gob.NewDecoder(bytes.NewBuffer(data))
-		if err := dec.Decode(&nmc); err != nil {
+		buf := bytes.NewBuffer(data)
+		nmcs[pid] = &NMCtmp{}
+		if err := nmcs[pid].decode(buf); err != nil {
 			return err
 		}
-		nmcs[pid] = &nmc
+
 		return nil
 	}
 
-	err = server.Round([][]byte{toSend.Bytes()}, check)
+	err = server.Round([][]byte{toSendBuf.Bytes()}, check)
 	if err != nil {
 		return nil, err
 	}
 
 	// Round 2: decommit to (g^{a_k}, pi_k)
-	toSend.Reset()
-	zkp = zkpok.NoopZKproof{}
-	zkpBytes, _ = zkp.MarshalBinary()
-	buf := make([]byte, 2+len(zkpBytes))
-	binary.LittleEndian.PutUint16(buf[:2], uint16(len(zkpBytes)))
-	copy(buf[2:], zkpBytes)
-
-	if _, err = toSend.Write(buf); err != nil {
+	toSendBuf.Reset()
+	if err = group.Encode(pkShare, toSendBuf); err != nil {
 		return nil, err
 	}
-	if _, err = toSend.Write(group.Marshal(pkShare)); err != nil {
+	if err = zkp.Encode(toSendBuf); err != nil {
 		return nil, err
 	}
 
 	pkShares := make([]curve.Point, nProc)
 	check = func(pid uint16, data []byte) error {
-		zkpBytesLen := binary.LittleEndian.Uint16(data[:2])
-		zkp := &zkpok.NoopZKproof{}
-		zkp.UnmarshalBinary(data[2 : 2+zkpBytesLen])
-
-		cp, err := group.Unmarshal(data[2+zkpBytesLen:])
+		buf := bytes.NewBuffer(data)
+		cp, err := group.Decode(buf)
 		if err != nil {
 			return err
 		}
-
+		var zkp zkpok.NoopZKproof
+		if err = zkp.Decode(buf); err != nil {
+			return err
+		}
 		if !zkp.Verify() {
 			return fmt.Errorf("Wrong proof")
 		}
 
-		if err := nmcs[pid].Verify(data[2+zkpBytesLen:], data[2:2+zkpBytesLen]); err != nil {
+		if err := nmcs[pid].Verify(data, []byte{}); err != nil {
 			return err
 		}
 
@@ -159,10 +206,10 @@ func GenExpReveal(label string, server sync.Server, nProc uint16, group curve.Gr
 		return nil
 	}
 
-	err = server.Round([][]byte{toSend.Bytes()}, check)
+	err = server.Round([][]byte{toSendBuf.Bytes()}, check)
 	if err != nil {
 		return nil, err
 	}
 
-	return NewDKey(DSecret, pkShare, pkShares, group), nil
+	return NewDKey(dSecret, pkShare, pkShares, group), nil
 }

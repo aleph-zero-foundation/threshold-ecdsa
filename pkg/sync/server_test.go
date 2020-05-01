@@ -41,7 +41,7 @@ var _ = Describe("Sync Server", func() {
 		}
 	})
 
-	JustAfterEach(func() {
+	AfterEach(func() {
 		tests.CloseNetwork(netservs)
 	})
 

@@ -46,7 +46,7 @@ var _ = Describe("TECDSA Test", func() {
 		rand.Seed(1729)
 	})
 
-	JustAfterEach(func() {
+	AfterEach(func() {
 		tests.CloseNetwork(netservs)
 	})
 
@@ -100,10 +100,11 @@ var _ = Describe("TECDSA Test", func() {
 				}(i)
 			}
 
+			wg.Wait()
+
 			for i := uint16(0); i < nProc; i++ {
 				Expect(errors[i]).NotTo(HaveOccurred())
 			}
-			wg.Wait()
 		}
 
 		sign := func() {
@@ -114,13 +115,13 @@ var _ = Describe("TECDSA Test", func() {
 					signs[i], errors[i] = protos[i].Sign(msg)
 				}(i)
 			}
+			wg.Wait()
 
 			for i := uint16(0); i < nProc; i++ {
 				Expect(errors[i]).NotTo(HaveOccurred())
 				Expect(signs[i]).NotTo(BeNil())
 			}
 
-			wg.Wait()
 		}
 
 		Context("Two parties", func() {
@@ -140,7 +141,7 @@ var _ = Describe("TECDSA Test", func() {
 						presig()
 					})
 
-					It("Should sing a message successfully", func() {
+					It("Should sign a message successfully", func() {
 						init()
 						presig()
 						sign()
@@ -163,7 +164,7 @@ var _ = Describe("TECDSA Test", func() {
 						presig()
 					})
 
-					It("Should sing a message successfully", func() {
+					It("Should sign a message successfully", func() {
 						init()
 						presig()
 						sign()

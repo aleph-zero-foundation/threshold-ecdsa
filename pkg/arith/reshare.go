@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/binary"
-	"encoding/gob"
 	"fmt"
 	"math/big"
 
@@ -22,20 +21,18 @@ func (ads *ADSecret) Reshare(t uint16) (*TDSecret, error) {
 	var err error
 
 	// STEP 1. Publish a proof of knowledge of ads.skShare and ads.r
-	toSendBuf := bytes.Buffer{}
 	toSend := [][]byte{nil}
-	enc := gob.NewEncoder(&toSendBuf)
+	toSendBuf := &bytes.Buffer{}
 	// TODO: replace the following commitment and check with EGKnow
 	egknow := zkpok.NoopZKproof{}
-	if err := enc.Encode(egknow); err != nil {
+	if err := egknow.Encode(toSendBuf); err != nil {
 		return nil, err
 	}
 	egknows := make([]zkpok.NoopZKproof, nProc)
 	check := func(pid uint16, data []byte) error {
 		var egknow zkpok.NoopZKproof
 		buf := bytes.NewBuffer(data)
-		dec := gob.NewDecoder(buf)
-		if err := dec.Decode(&egknow); err != nil {
+		if err := egknow.Decode(buf); err != nil {
 			return fmt.Errorf("decode: egknow %v", err)
 		}
 		if !egknow.Verify() {
@@ -73,41 +70,41 @@ func (ads *ADSecret) Reshare(t uint16) (*TDSecret, error) {
 	// STEP 4. Commit to values from Step 3.
 	// TODO: build proper NMC
 	buildNMC := func(coefComms []*commitment.ElGamal, egknow, egrefresh *zkpok.NoopZKproof) (*NMCtmp, error) {
-		dataBuf, zkpBuf := bytes.Buffer{}, bytes.Buffer{}
+		dataBuf, zkpBuf := &bytes.Buffer{}, &bytes.Buffer{}
 		for _, c := range coefComms {
-			p, _ := c.MarshalBinary()
-			if _, err := dataBuf.Write(p); err != nil {
+			if err := c.Encode(dataBuf); err != nil {
 				return nil, err
 			}
 		}
-		p, _ := egknow.MarshalBinary()
-		if _, err := zkpBuf.Write(p); err != nil {
+		if err := egknow.Encode(zkpBuf); err != nil {
 			return nil, err
 		}
-		p, _ = egrefresh.MarshalBinary()
-		if _, err := zkpBuf.Write(p); err != nil {
+		if err := egrefresh.Encode(zkpBuf); err != nil {
 			return nil, err
 		}
+
+		// TODO: build actual nmc
 		nmc := &NMCtmp{dataBuf.Bytes(), zkpBuf.Bytes()}
 
 		return nmc, nil
 
 	}
+
 	nmc, err := buildNMC(coefComms, &egknow, &egrefresh)
 	if err != nil {
 		return nil, err
 	}
+
 	toSendBuf.Reset()
-	enc = gob.NewEncoder(&toSendBuf)
-	if err := enc.Encode(nmc); err != nil {
+	if err := nmc.encode(toSendBuf); err != nil {
 		return nil, err
 	}
 
 	nmcs := make([]*NMCtmp, nProc)
 	check = func(pid uint16, data []byte) error {
+		buf := bytes.NewBuffer(data)
 		nmcs[pid] = &NMCtmp{}
-		dec := gob.NewDecoder(bytes.NewBuffer(data))
-		if err := dec.Decode(nmcs[pid]); err != nil {
+		if err := nmcs[pid].decode(buf); err != nil {
 			return err
 		}
 		return nil
@@ -120,30 +117,29 @@ func (ads *ADSecret) Reshare(t uint16) (*TDSecret, error) {
 
 	// STEP 5. Decommit to values from Step 4.
 	toSendBuf.Reset()
-	enc = gob.NewEncoder(&toSendBuf)
-	if err := enc.Encode(egknow); err != nil {
+	if err := egknow.Encode(toSendBuf); err != nil {
 		return nil, err
 	}
-	if err := enc.Encode(egrefresh); err != nil {
+	if err := egrefresh.Encode(toSendBuf); err != nil {
 		return nil, err
 	}
 	for _, c := range coefComms {
-		if err := enc.Encode(c); err != nil {
+		if err := c.Encode(toSendBuf); err != nil {
 			return nil, err
 		}
 	}
 
 	check = func(pid uint16, data []byte) error {
 		var egknow zkpok.NoopZKproof
-		dec := gob.NewDecoder(bytes.NewBuffer(data))
-		if err := dec.Decode(&egknow); err != nil {
+		buf := bytes.NewBuffer(data)
+		if err := egknow.Decode(buf); err != nil {
 			return err
 		}
 		if !egknow.Verify() {
 			return fmt.Errorf("Wrong egknow proof")
 		}
 		var egrefresh zkpok.NoopZKproof
-		if err := dec.Decode(&egrefresh); err != nil {
+		if err := egrefresh.Decode(buf); err != nil {
 			return err
 		}
 		if !egrefresh.Verify() {
@@ -152,7 +148,7 @@ func (ads *ADSecret) Reshare(t uint16) (*TDSecret, error) {
 		coefComms := make([]*commitment.ElGamal, t)
 		for i := range coefComms {
 			coefComms[i] = &commitment.ElGamal{}
-			if err := dec.Decode(coefComms[i]); err != nil {
+			if err := coefComms[i].Decode(buf); err != nil {
 				return err
 			}
 		}
@@ -162,7 +158,7 @@ func (ads *ADSecret) Reshare(t uint16) (*TDSecret, error) {
 			return err
 		}
 
-		if err := nmcs[pid].Verify(nmc.DataBytes, nmc.ZkpBytes); err != nil {
+		if err := nmcs[pid].Verify(nmc.dataBytes, nmc.zkpBytes); err != nil {
 			return err
 		}
 
@@ -201,25 +197,24 @@ func (ads *ADSecret) Reshare(t uint16) (*TDSecret, error) {
 	}
 
 	toSendBuf.Reset()
-	enc = gob.NewEncoder(&toSendBuf)
 	for _, c := range egEvalRefresh {
 		// TODO: you know what
 		egrefresh = zkpok.NoopZKproof{}
-		if err := enc.Encode(egrefresh); err != nil {
+		if err := egrefresh.Encode(toSendBuf); err != nil {
 			return nil, err
 		}
-		if err := enc.Encode(c); err != nil {
+		if err := c.Encode(toSendBuf); err != nil {
 			return nil, err
 		}
 	}
 
 	allEgEvalRefresh := make([][]*commitment.ElGamal, nProc)
 	check = func(pid uint16, data []byte) error {
-		dec := gob.NewDecoder(bytes.NewBuffer(data))
+		buf := bytes.NewBuffer(data)
 		allEgEvalRefresh[pid] = make([]*commitment.ElGamal, nProc)
 		for i := range allEgEvalRefresh[pid] {
 			var egrefresh zkpok.NoopZKproof
-			if err := dec.Decode(&egrefresh); err != nil {
+			if err := egrefresh.Decode(buf); err != nil {
 				return err
 			}
 			if !egrefresh.Verify() {
@@ -227,7 +222,7 @@ func (ads *ADSecret) Reshare(t uint16) (*TDSecret, error) {
 			}
 
 			allEgEvalRefresh[pid][i] = &commitment.ElGamal{}
-			if err := dec.Decode(allEgEvalRefresh[pid][i]); err != nil {
+			if err := allEgEvalRefresh[pid][i].Decode(buf); err != nil {
 				return err
 			}
 		}
@@ -295,7 +290,6 @@ func (ads *ADSecret) Reshare(t uint16) (*TDSecret, error) {
 
 	// STEP 10. Commit to coefs of F and EGRefresh
 	toSendBuf.Reset()
-	enc = gob.NewEncoder(&toSendBuf)
 	var shareRandRefresh *big.Int
 	if shareRandRefresh, err = rand.Int(randReader, Q); err != nil {
 		return nil, err
@@ -303,24 +297,23 @@ func (ads *ADSecret) Reshare(t uint16) (*TDSecret, error) {
 	shareComm := ads.egf.Create(share, shareRandRefresh)
 	// TODO: ...
 	egrefresh = zkpok.NoopZKproof{}
-	if err := enc.Encode(egrefresh); err != nil {
+	if err := egrefresh.Encode(toSendBuf); err != nil {
 		return nil, err
 	}
-	if err := enc.Encode(shareComm); err != nil {
+	if err := shareComm.Encode(toSendBuf); err != nil {
 		return nil, err
 	}
 
 	check = func(pid uint16, data []byte) error {
 		buf := bytes.NewBuffer(data)
-		dec := gob.NewDecoder(buf)
 		var (
 			egrefresh zkpok.NoopZKproof
 			eg        commitment.ElGamal
 		)
-		if err := dec.Decode(&egrefresh); err != nil {
+		if err := egrefresh.Decode(buf); err != nil {
 			return fmt.Errorf("decode: egrefresh %v", err)
 		}
-		if err := dec.Decode(&eg); err != nil {
+		if err := eg.Decode(buf); err != nil {
 			return fmt.Errorf("decode: eg %v", err)
 		}
 		if !egrefresh.Verify() {

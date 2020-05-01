@@ -3,7 +3,6 @@ package arith
 import (
 	"bytes"
 	"crypto/rand"
-	"encoding/gob"
 	"fmt"
 	"math/big"
 
@@ -64,7 +63,7 @@ func (tds *TDSecret) Reveal() (*big.Int, error) {
 
 	nProc := len(tds.egs)
 	if err := tds.server.Round(toSend, check); err != nil {
-		if err, ok := err.(*sync.RoundError); ok && err.Missing() != nil && nProc-len(err.Missing()) < int(tds.t) {
+		if rErr, ok := err.(*sync.RoundError); ok && rErr.Missing() != nil && nProc-len(rErr.Missing()) < int(tds.t) {
 			return nil, err
 		}
 	}
@@ -90,14 +89,18 @@ func (tds *TDSecret) Exp() (*TDKey, error) {
 	tdk.pkShare = group.ScalarBaseMult(tds.skShare)
 
 	// TODO: add EGRefresh
-	toSend := [][]byte{group.Marshal(tdk.pkShare)}
+	toSendBuf := &bytes.Buffer{}
+	if err := group.Encode(tdk.pkShare, toSendBuf); err != nil {
+		fmt.Errorf("Encoding tkd.pkShare in Exp: %v", err)
+	}
 
 	tdk.pkShares = make([]curve.Point, len(tds.egs))
 
 	check := func(pid uint16, data []byte) error {
 		// TODO: check zkpok
+		buf := bytes.NewBuffer(data)
 		var err error
-		tdk.pkShares[pid], err = group.Unmarshal(data)
+		tdk.pkShares[pid], err = group.Decode(buf)
 		if err != nil {
 			return err
 		}
@@ -105,7 +108,7 @@ func (tds *TDSecret) Exp() (*TDKey, error) {
 	}
 
 	nProc := len(tds.egs)
-	if err := tds.server.Round(toSend, check); err != nil {
+	if err := tds.server.Round([][]byte{toSendBuf.Bytes()}, check); err != nil {
 		if rErr, ok := err.(*sync.RoundError); ok && rErr.Missing() != nil && nProc-len(rErr.Missing()) < int(tds.t) {
 			return nil, err
 		}
@@ -126,7 +129,7 @@ func (tds TDSecret) Threshold() uint16 {
 func Gen(label string, server sync.Server, egf *commitment.ElGamalFactory, nProc uint16) (*ADSecret, error) {
 	var err error
 	// create a secret
-	ads := &ADSecret{DSecret: *NewDSecret(label, nil, server), egf: egf}
+	ads := &ADSecret{DSecret: DSecret{label: label, server: server}, egf: egf}
 	if ads.skShare, err = rand.Int(randReader, Q); err != nil {
 		return nil, err
 	}
@@ -139,12 +142,11 @@ func Gen(label string, server sync.Server, egf *commitment.ElGamalFactory, nProc
 	// TODO: replace with a proper zkpok when it's ready
 	zkp := zkpok.NoopZKproof{}
 
-	toSendBuf := bytes.Buffer{}
-	enc := gob.NewEncoder(&toSendBuf)
-	if err := enc.Encode(ads.eg); err != nil {
+	toSendBuf := &bytes.Buffer{}
+	if err := ads.eg.Encode(toSendBuf); err != nil {
 		return nil, err
 	}
-	if err := enc.Encode(zkp); err != nil {
+	if err := zkp.Encode(toSendBuf); err != nil {
 		return nil, err
 	}
 
@@ -156,11 +158,10 @@ func Gen(label string, server sync.Server, egf *commitment.ElGamalFactory, nProc
 			zkp zkpok.NoopZKproof
 		)
 		buf := bytes.NewBuffer(data)
-		dec := gob.NewDecoder(buf)
-		if err := dec.Decode(&eg); err != nil {
+		if err := eg.Decode(buf); err != nil {
 			return fmt.Errorf("decode: eg %v", err)
 		}
-		if err := dec.Decode(&zkp); err != nil {
+		if err := zkp.Decode(buf); err != nil {
 			return fmt.Errorf("decode: zkp %v", err)
 		}
 		if !zkp.Verify() {

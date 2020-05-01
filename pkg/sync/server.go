@@ -71,6 +71,8 @@ func (s *server) Round(toSend [][]byte, check func(uint16, []byte) error) error 
 		return newRoundError("Missing data from some parties", missing)
 	}
 
+	wg.Wait()
+
 	if errSend != nil {
 		return wrap(errSend)
 	}
