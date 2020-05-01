@@ -64,8 +64,8 @@ func query(u, v curve.Point, group curve.Group, key *DKey) error {
 		return err
 	}
 
-	testValueShare := group.Add(group.ScalarMult(u, alpha), group.ScalarMult(group.Gen(), beta))
-	verifyValueShare := group.Add(group.ScalarMult(v, alpha), group.ScalarMult(key.pk, beta))
+	testValueShare := u   //group.Add(group.ScalarMult(u, alpha), group.ScalarMult(group.Gen(), beta))
+	verifyValueShare := v //group.Add(group.ScalarMult(v, alpha), group.ScalarMult(key.pk, beta))
 
 	toSendBuf := &bytes.Buffer{}
 	toSend := [][]byte{nil}
