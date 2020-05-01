@@ -85,7 +85,7 @@ var _ = Describe("Secret Test", func() {
 					keys[bob] = arith.NewDKey(bSecret, group.Gen(), []curve.Point{group.Gen(), nil}, group)
 
 					u = group.ScalarBaseMult(big.NewInt(rand.Int63()))
-					v = group.ScalarBaseMult(big.NewInt(rand.Int63()))
+					v = group.ScalarMult(u, big.NewInt(2))
 
 					wg.Add(int(nProc))
 					go func() {
