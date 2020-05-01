@@ -1,7 +1,8 @@
 package commitment
 
 import (
-	"encoding/binary"
+	"fmt"
+	"io"
 	"math/big"
 
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/curve"
@@ -46,7 +47,7 @@ func (e *ElGamalFactory) Neutral() *ElGamal {
 
 //IsNeutral Chackes if element is equal to neutral one
 func (e *ElGamalFactory) IsNeutral(a *ElGamal) bool {
-	return a.Cmp(e.neutral, a)
+	return a.Equal(e.neutral, a)
 }
 
 //Compose composes two ElGamal Commitments
@@ -70,35 +71,35 @@ func (c *ElGamal) Inverse(a *ElGamal) *ElGamal {
 	return c
 }
 
-//Cmp compares to ElGamal ElGamals (maybe should be called equal)
-func (c *ElGamal) Cmp(a, b *ElGamal) bool {
+// Equal checks the equality of the provided commitments
+func (c *ElGamal) Equal(a, b *ElGamal) bool {
 	return c.curve.Equal(a.first, b.first) && c.curve.Equal(a.second, b.second)
 }
 
-//MarshalBinary marshals ElGamal Commitment
-func (c *ElGamal) MarshalBinary() ([]byte, error) {
-	firstBytes := c.curve.Marshal(c.first)
-	secondBytes := c.curve.Marshal(c.second)
-
-	result := make([]byte, 4, 4+len(firstBytes)+len(secondBytes))
-	binary.LittleEndian.PutUint32(result, uint32(len(firstBytes)))
-
-	result = append(result, firstBytes...)
-	result = append(result, secondBytes...)
-	return result, nil
+// Encode encodes ElGamal Commitment
+func (c *ElGamal) Encode(w io.Writer) error {
+	if err := c.curve.Encode(c.first, w); err != nil {
+		return fmt.Errorf("Encoding first coordinate in ElGamal: %v", err)
+	}
+	if err := c.curve.Encode(c.second, w); err != nil {
+		return fmt.Errorf("Encoding second coordinate in ElGamal: %v", err)
+	}
+	return nil
 }
 
-//UnmarshalBinary unmarshals ElGamal Commitment
-func (c *ElGamal) UnmarshalBinary(b []byte) error {
+// Decode decodes ElGamal Commitment
+func (c *ElGamal) Decode(r io.Reader) error {
 	c.curve = curve.NewSecp256k1Group()
 
-	firstLen := binary.LittleEndian.Uint32(b[0:4])
-
-	tmp, _ := c.curve.Unmarshal(b[4 : 4+firstLen])
-	c.first = tmp
-
-	tmp, _ = c.curve.Unmarshal(b[4+firstLen:])
-	c.second = tmp
+	var err error
+	c.first, err = c.curve.Decode(r)
+	if err != nil {
+		return fmt.Errorf("Decoding first coordinate in ElGamal: %v", err)
+	}
+	c.second, err = c.curve.Decode(r)
+	if err != nil {
+		return fmt.Errorf("Decoding second coordinate in ElGamal: %v", err)
+	}
 
 	return nil
 }

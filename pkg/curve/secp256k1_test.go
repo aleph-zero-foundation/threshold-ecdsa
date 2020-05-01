@@ -2,6 +2,7 @@ package curve_test
 
 import (
 	"bytes"
+	"crypto/rand"
 	"math/big"
 
 	. "github.com/onsi/ginkgo"
@@ -43,12 +44,6 @@ var _ = Describe("Secp256k1 Test", func() {
 			b := secp256k1.ScalarBaseMult(big.NewInt(1))
 			Expect(secp256k1.Equal(a, b)).To(BeTrue())
 		})
-
-		It("Test of Unmarshal", func() {
-			b := []byte{0, 0, 0, 32, 121, 190, 102, 126, 249, 220, 187, 172, 85, 160, 98, 149, 206, 135, 11, 7, 2, 155, 252, 219, 45, 206, 40, 217, 89, 242, 129, 91, 22, 248, 23, 152, 72, 58, 218, 119, 38, 163, 196, 101, 93, 164, 251, 252, 14, 17, 8, 168, 253, 23, 180, 72, 166, 133, 84, 25, 156, 71, 208, 143, 251, 16, 212, 184}
-			a, _ := secp256k1.Unmarshal(b)
-			Expect(secp256k1.Equal(a, secp256k1.Gen())).To(BeTrue())
-		})
 	})
 
 	Describe("One point argument functions", func() {
@@ -59,9 +54,17 @@ var _ = Describe("Secp256k1 Test", func() {
 		})
 
 		It("Test of Marshal", func() {
-			result := secp256k1.Marshal(secp256k1.Gen())
-			b := []byte{0, 0, 0, 32, 121, 190, 102, 126, 249, 220, 187, 172, 85, 160, 98, 149, 206, 135, 11, 7, 2, 155, 252, 219, 45, 206, 40, 217, 89, 242, 129, 91, 22, 248, 23, 152, 72, 58, 218, 119, 38, 163, 196, 101, 93, 164, 251, 252, 14, 17, 8, 168, 253, 23, 180, 72, 166, 133, 84, 25, 156, 71, 208, 143, 251, 16, 212, 184}
-			Expect(bytes.Compare(result, b) == 0).To(BeTrue())
+			r, _ := rand.Int(rand.Reader, secp256k1.Order())
+			a := secp256k1.ScalarBaseMult(r)
+
+			rw := bytes.Buffer{}
+			err := secp256k1.Encode(a, &rw)
+			Expect(err).NotTo(HaveOccurred())
+
+			b, err := secp256k1.Decode(&rw)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(secp256k1.Equal(a, b)).To(BeTrue())
 		})
 
 		It("Test of Neg", func() {

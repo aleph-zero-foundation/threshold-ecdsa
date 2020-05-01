@@ -1,6 +1,7 @@
 package tecdsa
 
 import (
+	"bytes"
 	"fmt"
 	"math/big"
 
@@ -101,7 +102,11 @@ func (p *Protocol) Sign(message *big.Int) (*Signature, error) {
 		return nil, err
 	}
 
-	r := crypto.HashToBigInt(p.group.Marshal(kKey.PublicKey()))
+	w := &bytes.Buffer{}
+	if err := p.group.Encode(kKey.PublicKey(), w); err != nil {
+		return nil, err
+	}
+	r := crypto.HashToBigInt(w.Bytes())
 	tau, err := ps.tau.Reveal()
 	if err != nil {
 		return nil, err
