@@ -184,7 +184,7 @@ func query(u, v curve.Point, group curve.Group, key *DKey) error {
 	}
 
 	testValue = group.ScalarMult(testValue, key.secret.skShare)
-	finalTestValue := group.Neutral()
+	finalTestValue := testValue
 
 	//STEP 3 Publish u'_k with ZKPOK
 
