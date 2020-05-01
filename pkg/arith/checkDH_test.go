@@ -77,8 +77,11 @@ var _ = Describe("Secret Test", func() {
 					keys = make([]*arith.DKey, nProc)
 					errors = make([]error, nProc)
 
-					keys[alice] = arith.NewDKey(arith.NewDSecret("alice", big.NewInt(1), syncservs[alice]), group.Gen(), []curve.Point{nil, group.Gen()}, group)
-					keys[bob] = arith.NewDKey(arith.NewDSecret("alice", big.NewInt(1), syncservs[bob]), group.Gen(), []curve.Point{group.Gen(), nil}, group)
+					aSecret = arith.NewDSecret("alice", big.NewInt(1), syncservs[alice])
+					bSecret = arith.NewDSecret("alice", big.NewInt(1), syncservs[bob])
+
+					keys[alice] = arith.NewDKey(aSecret, group.Gen(), []curve.Point{nil, group.Gen()}, group)
+					keys[bob] = arith.NewDKey(bSecret, group.Gen(), []curve.Point{group.Gen(), nil}, group)
 
 					u = group.ScalarBaseMult(big.NewInt(rand.Int63()))
 					v = group.ScalarBaseMult(big.NewInt(rand.Int63()))
