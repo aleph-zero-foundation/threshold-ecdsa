@@ -146,7 +146,6 @@ func CheckDH(u, v curve.Point, group curve.Group, key *DKey) error {
 	}
 
 	testValue = group.ScalarMult(testValue, key.secret.skShare)
-	finalTestValue := testValue
 
 	//STEP 3 Publish testValue with ZKPOK
 
@@ -188,6 +187,8 @@ func CheckDH(u, v curve.Point, group curve.Group, key *DKey) error {
 	if err := key.secret.server.Round(toSend, check); err != nil {
 		return err
 	}
+
+	finalTestValue := testValue
 
 	for i := 0; i < nProc; i++ {
 		if testValues[i] != nil {
