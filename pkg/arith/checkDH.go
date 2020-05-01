@@ -2,9 +2,7 @@ package arith
 
 import (
 	"bytes"
-	"crypto/rand"
 	"fmt"
-	"math/big"
 
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/crypto/zkpok"
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/curve"
@@ -55,14 +53,14 @@ func query(u, v curve.Point, group curve.Group, key *DKey) error {
 	var err error
 
 	//STEP 1 Sample values, compute testValueShare, verifyValueShare and rrerand, commit to them
-	var alpha, beta *big.Int
+	/*var alpha, beta *big.Int
 
 	if alpha, err = rand.Int(randReader, group.Order()); err != nil {
 		return err
 	}
 	if beta, err = rand.Int(randReader, group.Order()); err != nil {
 		return err
-	}
+	}*/
 
 	testValueShare := u   //group.Add(group.ScalarMult(u, alpha), group.ScalarMult(group.Gen(), beta))
 	verifyValueShare := v //group.Add(group.ScalarMult(v, alpha), group.ScalarMult(key.pk, beta))
