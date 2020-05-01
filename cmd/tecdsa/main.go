@@ -236,5 +236,16 @@ func main() {
 		return
 	}
 
+	sign, err := proto.Sign(big.NewInt(1))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error during tecdsa initialization: %v\n.", err)
+		return
+	}
+
+	if sign == nil {
+		fmt.Fprintf(os.Stderr, "signature should be nonempty.")
+		return
+	}
+
 	fmt.Fprintf(os.Stdout, "All done!\n")
 }

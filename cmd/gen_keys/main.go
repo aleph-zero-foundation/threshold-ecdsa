@@ -48,7 +48,7 @@ func encodePaillierPrivateKey(pk *paillier.PrivateKey) string {
 }
 
 // This program generates files with random keys and addresses for a committee of the specified size.
-// These files are intended to be used for local and aws tests of the gomel binary.
+// These files are intended to be used for local and aws tests of the tecdsa binary.
 func main() {
 	usageMsg := "Usage: gen_keys <number> [<addresses_file>]."
 	if len(os.Args) != 2 && len(os.Args) != 3 {
