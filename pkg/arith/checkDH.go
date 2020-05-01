@@ -127,8 +127,8 @@ func query(u, v curve.Point, group curve.Group, key *DKey) error {
 		return err
 	}
 
-	testValue := group.Neutral()
-	verifyValue := group.Neutral()
+	testValue := testValueShare
+	verifyValue := verifyValueShare
 
 	testValueShares := make([]curve.Point, nProc)
 	verifyValueShares := make([]curve.Point, nProc)
