@@ -91,9 +91,6 @@ func CheckDH(u, v curve.Point, group curve.Group, key *DKey) error {
 		return err
 	}
 
-	testValue := testValueShare
-	verifyValue := verifyValueShare
-
 	testValueShares := make([]curve.Point, nProc)
 	verifyValueShares := make([]curve.Point, nProc)
 
@@ -136,6 +133,9 @@ func CheckDH(u, v curve.Point, group curve.Group, key *DKey) error {
 		return err
 	}
 
+	testValue := testValueShare
+	verifyValue := verifyValueShare
+
 	for i := 0; i < nProc; i++ {
 		if testValueShares[i] != nil {
 			testValue = group.Add(testValue, testValueShares[i])
@@ -148,7 +148,7 @@ func CheckDH(u, v curve.Point, group curve.Group, key *DKey) error {
 	testValue = group.ScalarMult(testValue, key.secret.skShare)
 	finalTestValue := testValue
 
-	//STEP 3 Publish u'_k with ZKPOK
+	//STEP 3 Publish testValue with ZKPOK
 
 	toSendBuf.Reset()
 	if err := group.Encode(testValue, toSendBuf); err != nil {
@@ -165,6 +165,7 @@ func CheckDH(u, v curve.Point, group curve.Group, key *DKey) error {
 	check = func(pid uint16, data []byte) error {
 		buf := bytes.NewBuffer(data)
 
+		var err error
 		var testValue curve.Point
 		if testValue, err = group.Decode(buf); err != nil {
 			return err

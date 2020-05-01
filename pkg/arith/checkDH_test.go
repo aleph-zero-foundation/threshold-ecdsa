@@ -17,7 +17,7 @@ import (
 	"gitlab.com/alephledger/core-go/pkg/tests"
 )
 
-var _ = Describe("Secret Test", func() {
+var _ = Describe("CheckDH Test", func() {
 
 	var (
 		nProc     uint16
@@ -46,7 +46,7 @@ var _ = Describe("Secret Test", func() {
 		group = curve.NewSecp256k1Group()
 	})
 
-	JustAfterEach(func() {
+	AfterEach(func() {
 		tests.CloseNetwork(netservs)
 	})
 
@@ -76,14 +76,17 @@ var _ = Describe("Secret Test", func() {
 					keys = make([]*arith.DKey, nProc)
 					errors = make([]error, nProc)
 
-					aSecret := arith.NewDSecret("alice", big.NewInt(1), syncservs[alice])
-					bSecret := arith.NewDSecret("alice", big.NewInt(1), syncservs[bob])
+					aSecretValue := big.NewInt(rand.Int63())
+					bSecretValue := big.NewInt(rand.Int63())
 
-					keys[alice] = arith.NewDKey(aSecret, group.Gen(), []curve.Point{nil, group.Gen()}, group)
-					keys[bob] = arith.NewDKey(bSecret, group.Gen(), []curve.Point{group.Gen(), nil}, group)
+					aSecret := arith.NewDSecret("alice", aSecretValue, syncservs[alice])
+					bSecret := arith.NewDSecret("alice", bSecretValue, syncservs[bob])
+
+					keys[alice] = arith.NewDKey(aSecret, group.ScalarBaseMult(aSecretValue), []curve.Point{nil, group.ScalarBaseMult(bSecretValue)}, group)
+					keys[bob] = arith.NewDKey(bSecret, group.ScalarBaseMult(bSecretValue), []curve.Point{group.ScalarBaseMult(aSecretValue), nil}, group)
 
 					u = group.ScalarBaseMult(big.NewInt(rand.Int63()))
-					v = group.ScalarMult(u, big.NewInt(2))
+					v = group.ScalarMult(u, new(big.Int).Add(aSecretValue, bSecretValue))
 
 					wg.Add(int(nProc))
 					go func() {
@@ -98,7 +101,37 @@ var _ = Describe("Secret Test", func() {
 
 					Expect(errors[alice]).NotTo(HaveOccurred())
 					Expect(errors[bob]).NotTo(HaveOccurred())
+				})
 
+				It("Should fail for alice and bob", func() {
+					keys = make([]*arith.DKey, nProc)
+					errors = make([]error, nProc)
+
+					aSecretValue := big.NewInt(rand.Int63())
+					bSecretValue := big.NewInt(rand.Int63())
+
+					aSecret := arith.NewDSecret("alice", aSecretValue, syncservs[alice])
+					bSecret := arith.NewDSecret("alice", bSecretValue, syncservs[bob])
+
+					keys[alice] = arith.NewDKey(aSecret, group.ScalarBaseMult(aSecretValue), []curve.Point{nil, group.ScalarBaseMult(bSecretValue)}, group)
+					keys[bob] = arith.NewDKey(bSecret, group.ScalarBaseMult(bSecretValue), []curve.Point{group.ScalarBaseMult(aSecretValue), nil}, group)
+
+					u = group.ScalarBaseMult(big.NewInt(rand.Int63()))
+					v = group.ScalarMult(u, new(big.Int).Add(new(big.Int).Add(aSecretValue, big.NewInt(1)), bSecretValue))
+
+					wg.Add(int(nProc))
+					go func() {
+						defer wg.Done()
+						errors[alice] = arith.CheckDH(u, v, group, keys[alice])
+					}()
+					go func() {
+						defer wg.Done()
+						errors[bob] = arith.CheckDH(u, v, group, keys[bob])
+					}()
+					wg.Wait()
+
+					Expect(errors[alice]).To(HaveOccurred())
+					Expect(errors[bob]).To(HaveOccurred())
 				})
 			})
 		})
