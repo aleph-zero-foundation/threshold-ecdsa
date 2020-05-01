@@ -2,9 +2,9 @@ package arith
 
 import (
 	"bytes"
+	"crypto/rand"
 	"fmt"
 	"math/big"
-	"math/rand"
 
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/crypto/zkpok"
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/curve"
