@@ -73,9 +73,10 @@ var _ = Describe("Secret Test", func() {
 
 			Context("Alice and bob are honest and alive", func() {
 
-				BeforeEach(func() {
+				It("Should finish for alice and bob", func() {
 					keys = make([]*arith.DKey, nProc)
 					errors = make([]error, nProc)
+					queries = make([]func(u, v curve.Point, group curve.Group) error, nProc)
 
 					aSecret := arith.NewDSecret("alice", big.NewInt(1), syncservs[alice])
 					bSecret := arith.NewDSecret("alice", big.NewInt(1), syncservs[bob])
@@ -86,9 +87,6 @@ var _ = Describe("Secret Test", func() {
 					u = group.ScalarBaseMult(big.NewInt(rand.Int63()))
 					v = group.ScalarBaseMult(big.NewInt(rand.Int63()))
 
-				})
-
-				It("Should finish for alice and bob", func() {
 					wg.Add(int(nProc))
 					go func() {
 						defer wg.Done()
