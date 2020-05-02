@@ -36,6 +36,7 @@ var _ = Describe("Sync Server", func() {
 		wg = stdsync.WaitGroup{}
 		netservs = tests.NewNetwork(int(nProc))
 		syncservs = make([]sync.Server, int(nProc))
+		start = time.Now().Add(10 * time.Millisecond)
 		for i := uint16(0); i < nProc; i++ {
 			syncservs[i] = sync.NewServer(i, nProc, start, roundTime, netservs[i])
 		}
@@ -88,7 +89,6 @@ var _ = Describe("Sync Server", func() {
 					}
 					check[alice] = checkDataFactory(alice, bobData)
 					check[bob] = checkDataFactory(bob, aliceData)
-					start = time.Now().Add(100 * time.Millisecond)
 				})
 
 				It("Should finish for alice and bob", func() {
@@ -156,8 +156,6 @@ var _ = Describe("Sync Server", func() {
 						copy(expected[i], toSend)
 						expected[i][i] = nil
 					}
-
-					start = time.Now().Add(100 * time.Millisecond)
 				})
 
 				It("Should finish for all parties", func() {

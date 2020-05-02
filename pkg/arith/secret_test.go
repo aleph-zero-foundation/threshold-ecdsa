@@ -37,14 +37,14 @@ var _ = Describe("Secret Test", func() {
 		wg = stdsync.WaitGroup{}
 		netservs = tests.NewNetwork(int(nProc))
 		syncservs = make([]sync.Server, int(nProc))
+		start = time.Now().Add(time.Millisecond * 10)
 		for i := uint16(0); i < nProc; i++ {
 			syncservs[i] = sync.NewServer(i, nProc, start, roundTime, netservs[i])
 		}
 	})
 
 	BeforeEach(func() {
-		start = time.Now().Add(time.Millisecond * 10)
-		roundTime = 200 * time.Millisecond
+		roundTime = 50 * time.Millisecond
 		rand.Seed(1729)
 		group = curve.NewSecp256k1Group()
 	})
@@ -246,7 +246,7 @@ var _ = Describe("Secret Test", func() {
 					gen(a, al, egf)
 					gen(b, bl, egf)
 					bitLen := 264
-					timeout := 100 * time.Millisecond
+					timeout := 1 * time.Second
 					privs[alice], pubs[alice], err = paillier.GenerateKeyPair(bitLen, timeout)
 					Expect(err).NotTo(HaveOccurred())
 					privs[bob], pubs[bob], err = paillier.GenerateKeyPair(bitLen, timeout)
