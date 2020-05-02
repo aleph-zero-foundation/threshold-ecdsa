@@ -11,6 +11,8 @@ import (
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/curve"
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/sync"
 
+	"github.com/binance-chain/tss-lib/crypto/paillier"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
@@ -42,7 +44,7 @@ var _ = Describe("Secret Test", func() {
 
 	BeforeEach(func() {
 		start = time.Now().Add(time.Millisecond * 10)
-		roundTime = 100 * time.Millisecond
+		roundTime = 200 * time.Millisecond
 		rand.Seed(1729)
 		group = curve.NewSecp256k1Group()
 	})
@@ -218,6 +220,9 @@ var _ = Describe("Secret Test", func() {
 				a, b, c    []*arith.ADSecret
 				al, bl, cl string
 				egf        *commitment.ElGamalFactory
+				privs      []*paillier.PrivateKey
+				pubs       []*paillier.PublicKey
+				err        error
 			)
 
 			Context("Alice and Bob are honest and alive", func() {
@@ -229,6 +234,8 @@ var _ = Describe("Secret Test", func() {
 					al = "a"
 					bl = "b"
 					cl = "c"
+					privs = make([]*paillier.PrivateKey, nProc)
+					pubs = make([]*paillier.PublicKey, nProc)
 
 					errors = make([]error, nProc)
 					egsk := group.ScalarBaseMult(big.NewInt(rand.Int63()))
@@ -238,14 +245,20 @@ var _ = Describe("Secret Test", func() {
 				It("Should finish for alice and bob", func() {
 					gen(a, al, egf)
 					gen(b, bl, egf)
+					bitLen := 264
+					timeout := 100 * time.Millisecond
+					privs[alice], pubs[alice], err = paillier.GenerateKeyPair(bitLen, timeout)
+					Expect(err).NotTo(HaveOccurred())
+					privs[bob], pubs[bob], err = paillier.GenerateKeyPair(bitLen, timeout)
+					Expect(err).NotTo(HaveOccurred())
 					wg.Add(int(nProc))
 					go func() {
 						defer wg.Done()
-						c[alice], errors[alice] = arith.Mult(a[alice], b[alice], cl)
+						c[alice], errors[alice] = arith.Mult(a[alice], b[alice], cl, privs[alice], pubs[alice], pubs)
 					}()
 					go func() {
 						defer wg.Done()
-						c[bob], errors[bob] = arith.Mult(a[bob], b[bob], cl)
+						c[bob], errors[bob] = arith.Mult(a[bob], b[bob], cl, privs[bob], pubs[bob], pubs)
 					}()
 					wg.Wait()
 

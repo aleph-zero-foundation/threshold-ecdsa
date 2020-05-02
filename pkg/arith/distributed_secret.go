@@ -91,7 +91,7 @@ func (tds *TDSecret) Exp() (*TDKey, error) {
 	// TODO: add EGRefresh
 	toSendBuf := &bytes.Buffer{}
 	if err := group.Encode(tdk.pkShare, toSendBuf); err != nil {
-		fmt.Errorf("Encoding tkd.pkShare in Exp: %v", err)
+		return nil, fmt.Errorf("Encoding tkd.pkShare in Exp: %v", err)
 	}
 
 	tdk.pkShares = make([]curve.Point, len(tds.egs))

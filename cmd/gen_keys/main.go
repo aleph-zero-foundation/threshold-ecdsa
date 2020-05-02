@@ -19,9 +19,9 @@ type proc struct {
 }
 
 func makeProcess(localAddr string) (*proc, error) {
-	bitLen := 256
-	timout := 100 * time.Millisecond
-	privKey, pubKey, err := paillier.GenerateKeyPair(bitLen, timout)
+	bitLen := 264
+	timeout := 100 * time.Millisecond
+	privKey, pubKey, err := paillier.GenerateKeyPair(bitLen, timeout)
 	if err != nil {
 		return nil, err
 	}

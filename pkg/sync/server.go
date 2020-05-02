@@ -130,7 +130,7 @@ func (s *server) sendToAll(toSend [][]byte) error {
 			conn.TimeoutAfter(timeout)
 			var d []byte
 			if data == nil {
-				d = make([]byte, 10+len(toSend[0]))
+				d = make([]byte, 10+len(toSend[pid]))
 				binary.LittleEndian.PutUint16(d[:2], s.pid)
 				binary.LittleEndian.PutUint64(d[2:10], uint64(s.roundID))
 				copy(d[10:], toSend[pid])
