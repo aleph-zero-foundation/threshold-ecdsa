@@ -148,6 +148,7 @@ func (tds *TDSecret) Exp() (*TDKey, error) {
 	// TODO: Add possibility that someone didn't send his share
 	var wg stdsync.WaitGroup
 	channel := make(chan curve.Point, nProc)
+	counter := tds.t
 
 	for i, value := range tdk.pkShares {
 		if value != nil {
@@ -156,12 +157,17 @@ func (tds *TDSecret) Exp() (*TDKey, error) {
 				defer wg.Done()
 				channel <- lagrangeElement(i, value, group, uint16(nProc))
 			}(i, value)
+			counter = counter - 1
 		} else {
 			wg.Add(1)
 			go func(i int) {
 				defer wg.Done()
 				channel <- lagrangeElement(i, tdk.pkShare, group, uint16(nProc))
 			}(i)
+			counter = counter - 1
+		}
+		if counter == 0 {
+			break
 		}
 	}
 
