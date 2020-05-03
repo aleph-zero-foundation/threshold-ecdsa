@@ -237,7 +237,7 @@ func PrivMult(a, b *big.Int, pid, nProc int, server sync.Server, priv *paillier.
 
 	abmts := make([]*big.Int, nProc) // collection of decrypted shares for Bob
 	check = func(id uint16, data []byte) error {
-		if id < uint16(pid) || id > uint16(pid) {
+		if id != uint16(pid) {
 			var err error
 			// Bob for b
 			abmts[id] = new(big.Int).SetBytes(data)
