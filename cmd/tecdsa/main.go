@@ -9,8 +9,11 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"os/signal"
+	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/binance-chain/tss-lib/crypto/paillier"
@@ -186,66 +189,86 @@ func getOptions() *cliOptions {
 }
 
 func main() {
-	fmt.Fprintf(os.Stdout, "Starting!\n")
+	// temporary trick to capture stdout and stderr on remote instances
+	logFile, _ := os.OpenFile("aleph.log", os.O_WRONLY|os.O_CREATE|os.O_SYNC, 0644)
+	syscall.Dup2(int(logFile.Fd()), 1)
+	syscall.Dup2(int(logFile.Fd()), 2)
+	go func() {
+		out, _ := os.Create("out")
+		defer out.Close()
+		s := make(chan os.Signal, 1)
+		signal.Notify(s, syscall.SIGQUIT)
+		<-s
+		buf := make([]byte, 1<<25)
+		stackSize := runtime.Stack(buf, true)
+		out.Write(buf[:stackSize])
+		out.Sync()
+
+		panic("wrote stack, time to panic!")
+	}()
+
+	fmt.Fprintf(logFile, "Starting!\n")
 	options := getOptions()
 
 	member, err := getMember(options.pkPidFilename)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(logFile, err)
 		return
 	}
 
 	committee, err := getCommittee(options.keysAddrsFilename)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Invalid keys_adds file \"%s\", because: %v.\n", options.keysAddrsFilename, err)
+		fmt.Fprintf(logFile, "Invalid keys_adds file \"%s\", because: %v.\n", options.keysAddrsFilename, err)
 		return
 	}
 
 	if member.pid >= len(committee.addresses) {
-		fmt.Fprintf(os.Stderr, "Wrong pid: %d.\n", member.pid)
+		fmt.Fprintf(logFile, "Wrong pid: %d.\n", member.pid)
 		return
 	}
 
 	net, err := tcp.NewServer(committee.addresses[member.pid], committee.addresses)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Could not init tcp server due to %v.\n", err)
+		fmt.Fprintf(logFile, "Could not init tcp server due to %v.\n", err)
 		return
 	}
 
-	startTime, err := time.Parse(time.UnixDate, options.startTime)
+	start := strings.ReplaceAll(options.startTime, "-", " ")
+	startTime, err := time.Parse(time.UnixDate, start)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error in parsing startTime with layout %v: %v\n", time.UnixDate, err)
+		fmt.Fprintf(logFile, "Error in parsing startTime with layout %v: %v\n", time.UnixDate, err)
 		return
 	}
 	roundDuration, err := time.ParseDuration(options.roundDuration)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error in parsing roundDuration: %v\n.", err)
+		fmt.Fprintf(logFile, "Error in parsing roundDuration: %v\n.", err)
 		return
 	}
 	nProc := uint16(len(committee.addresses))
+	fmt.Fprintf(logFile, "nProc:%v\nstartTime:%v\ncurrentTime:%v\nroundDuration:%v\n", nProc, start, time.Now().UTC().Format(time.UnixDate), roundDuration)
 	server := sync.NewServer(uint16(member.pid), nProc, startTime, roundDuration, net)
 
 	proto, err := tecdsa.Init(nProc, server)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error during tecdsa initialization: %v\n.", err)
+		fmt.Fprintf(logFile, "error during tecdsa initialization: %v\n.", err)
 		return
 	}
 
 	if err = proto.Presign(uint16(options.threshold)); err != nil {
-		fmt.Fprintf(os.Stderr, "error during tecdsa initialization: %v\n.", err)
+		fmt.Fprintf(logFile, "error during tecdsa initialization: %v\n.", err)
 		return
 	}
 
 	sign, err := proto.Sign(big.NewInt(1))
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error during tecdsa initialization: %v\n.", err)
+		fmt.Fprintf(logFile, "error during tecdsa initialization: %v\n.", err)
 		return
 	}
 
 	if sign == nil {
-		fmt.Fprintf(os.Stderr, "signature should be nonempty.")
+		fmt.Fprintf(logFile, "signature should be nonempty.")
 		return
 	}
 
-	fmt.Fprintf(os.Stdout, "All done!\n")
+	fmt.Fprintf(logFile, "All done!\n")
 }
