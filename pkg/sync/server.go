@@ -24,36 +24,38 @@ type Server interface {
 
 type server struct {
 	sync.Mutex
-	pid, nProc uint16
-	startTime  time.Time
-	roundTime  time.Duration
-	roundID    int64
-	net        network.Server
+	pid, nProc    uint16
+	startTime     time.Time
+	roundDuration time.Duration
+	roundID       int64
+	net           network.Server
 }
 
 // NewServer construcs a SyncServer object
-func NewServer(pid, nProc uint16, startTime time.Time, roundTime time.Duration, net network.Server) Server {
+func NewServer(pid, nProc uint16, startTime time.Time, roundDuration time.Duration, net network.Server) Server {
 	return &server{
-		pid:       pid,
-		nProc:     nProc,
-		startTime: startTime,
-		roundTime: roundTime,
-		roundID:   -1,
-		net:       net,
+		pid:           pid,
+		nProc:         nProc,
+		startTime:     startTime,
+		roundDuration: roundDuration,
+		roundID:       -1,
+		net:           net,
 	}
 }
 
 func (s *server) Round(toSend [][]byte, check func(uint16, []byte) error) error {
 	s.roundID++
-	start := s.startTime.Add(time.Duration(s.roundID * int64(s.roundTime)))
-	// TODO: temporary solution for scheduling the start, rewrite this ugly sleep
-	d := time.Until(start)
-	if d < 0 {
-		return wrap(fmt.Errorf("the start time for round %v has passed %v ago", s.roundID, -d))
-	}
-	time.Sleep(d)
+	if s.roundID == 0 {
+		// TODO: temporary solution for scheduling the start, rewrite this ugly sleep
+		d := time.Until(s.startTime)
+		if d < 0 {
+			return wrap(fmt.Errorf("the start time has passed %v ago", d))
+		}
+		time.Sleep(d)
 
-	roundDeadline := start.Add(s.roundTime)
+	}
+
+	endRound := time.Now().Add(s.roundDuration)
 	var wg sync.WaitGroup
 	var errSend error
 	wg.Add(1)
@@ -62,7 +64,7 @@ func (s *server) Round(toSend [][]byte, check func(uint16, []byte) error) error 
 		errSend = s.sendToAll(toSend)
 	}()
 
-	data, missing, err := s.receiveFromAll(roundDeadline)
+	data, missing, err := s.receiveFromAll(endRound)
 	if err != nil {
 		return wrap(err)
 	}
@@ -95,7 +97,7 @@ func (s *server) Round(toSend [][]byte, check func(uint16, []byte) error) error 
 	}
 
 	// TODO: better timeout handling
-	d = time.Until(roundDeadline)
+	d := time.Until(endRound)
 	if d < 0 {
 		return wrap(fmt.Errorf("receiving took too long %v", -d))
 	}
@@ -169,7 +171,7 @@ func (s *server) sendToAll(toSend [][]byte) error {
 	return nil
 }
 
-func (s *server) receiveFromAll(roundDeadline time.Time) ([][]byte, []uint16, error) {
+func (s *server) receiveFromAll(endRound time.Time) ([][]byte, []uint16, error) {
 	data := make([][]byte, s.nProc)
 	missing := []uint16{}
 
@@ -215,7 +217,7 @@ func (s *server) receiveFromAll(roundDeadline time.Time) ([][]byte, []uint16, er
 	wg.Wait()
 
 	// TODO: better timeout handling
-	d := time.Until(roundDeadline)
+	d := time.Until(endRound)
 	if d < 0 {
 		return nil, nil, fmt.Errorf("receiving took to long %v", -d)
 	}
