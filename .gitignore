@@ -1,2 +1,8 @@
-*pk
+# test data
+*.pk
 keys_addrs
+addresses
+# archives
+*.zip
+# python
+*.pyc
