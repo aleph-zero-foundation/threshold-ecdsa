@@ -5,4 +5,5 @@ PKG=$1
 
 PKG_LIST=$(go list ${PKG}/... | grep -v /vendor/)
 
-go test -ginkgo.skip Multiplying -short ${PKG_LIST}
+echo $1
+go test -v -short ${PKG_LIST} -ginkgo.skip Multiplying
