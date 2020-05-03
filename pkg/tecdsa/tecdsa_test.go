@@ -112,7 +112,7 @@ var _ = Describe("TECDSA Test", func() {
 			for i := uint16(0); i < nProc; i++ {
 				go func(i uint16) {
 					defer wg.Done()
-					signs[i], errors[i] = protos[i].Sign(msg)
+					signs[i], errors[i] = protos[i].Sign(msg, i)
 				}(i)
 			}
 			wg.Wait()

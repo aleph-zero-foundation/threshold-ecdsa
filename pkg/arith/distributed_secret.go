@@ -82,7 +82,7 @@ func (tds *TDSecret) Reveal() (*big.Int, error) {
 }
 
 // Exp computes a common public key and its share related to this secret
-func (tds *TDSecret) Exp() (*TDKey, error) {
+func (tds *TDSecret) Exp(pid uint16) (*TDKey, error) {
 	// TODO: keep it somewhere
 	group := curve.NewSecp256k1Group()
 	tdk := &TDKey{}
@@ -158,7 +158,7 @@ func (tds *TDSecret) Exp() (*TDKey, error) {
 				channel <- lagrangeElement(i, value, group, uint16(nProc))
 			}(i, value)
 			counter = counter - 1
-		} else {
+		} else if i == int(pid) {
 			wg.Add(1)
 			go func(i int) {
 				defer wg.Done()

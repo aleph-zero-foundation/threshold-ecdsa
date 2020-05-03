@@ -88,7 +88,7 @@ func (p *Protocol) Presign(t uint16) error {
 }
 
 // Sign generates a signature using a presignature prepared before
-func (p *Protocol) Sign(message *big.Int) (*Signature, error) {
+func (p *Protocol) Sign(message *big.Int, pid uint16) (*Signature, error) {
 	// TODO: if the amount of presignatures falls below some threshold, use p.Presign to generate new ones
 	if len(p.presig) == 0 {
 		return nil, fmt.Errorf("There are no more presignatures to sign the message %v", message)
@@ -97,7 +97,7 @@ func (p *Protocol) Sign(message *big.Int) (*Signature, error) {
 	ps := p.presig[0]
 	p.presig = p.presig[1:]
 
-	kKey, err := ps.k.Exp()
+	kKey, err := ps.k.Exp(pid)
 	if err != nil {
 		return nil, err
 	}
