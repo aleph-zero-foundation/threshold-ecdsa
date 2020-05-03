@@ -189,11 +189,15 @@ func getOptions() *cliOptions {
 	return &options
 }
 
-func bench(w io.Writer, name string, job func()) {
+func bench(w io.Writer, name string, totalTime *int64, job func()) {
 	start := time.Now()
 	job()
 	ellapsed := time.Since(start)
+	if totalTime != nil {
+		*totalTime += ellapsed.Nanoseconds()
+	}
 	fmt.Fprintf(w, "job %s took %v\n", name, ellapsed)
+
 }
 
 func main() {
@@ -254,12 +258,12 @@ func main() {
 	}
 
 	nProc := uint16(len(committee.addresses))
-	fmt.Fprintf(logFile, "nProc:%v\nsigNumber:%v\nstartTime:%v\ncurrentTime:%v\nroundDuration:%v\n", nProc, options.sigNumber, start, time.Now().UTC().Format(time.UnixDate), roundDuration)
+	fmt.Fprintf(logFile, "nProc:%v\nsigNumber:%v\ncurrentTime:%v\nstartTime:%v\nroundDuration:%v\n", nProc, options.sigNumber, time.Now().UTC().Format(time.UnixDate), start, roundDuration)
 
 	server := sync.NewServer(uint16(member.pid), nProc, startTime, roundDuration, net)
 
 	var proto *tecdsa.Protocol
-	bench(logFile, "tecdsa.Init", func() {
+	bench(logFile, "tecdsa.Init", nil, func() {
 		proto, err = tecdsa.Init(uint16(member.pid), nProc, server)
 		if err != nil {
 			fmt.Fprintf(logFile, "error during tecdsa initialization: %v\n.", err)
@@ -267,25 +271,33 @@ func main() {
 		}
 	})
 
+	totalTime := int64(0)
 	for i := 0; i < options.sigNumber; i++ {
 		logMsg := fmt.Sprintf("Generating a presignature; round %d", i)
-		bench(logFile, logMsg, func() {
+		bench(logFile, logMsg, &totalTime, func() {
 			if err = proto.Presign(uint16(options.threshold)); err != nil {
-				fmt.Fprintf(logFile, "error during generating a presignature: %v\n.", err)
+				fmt.Fprintf(logFile, "error during generating a presignature: %v\n", err)
+				os.Exit(1)
+				return
+			}
+		})
+	}
+	tot, ave := time.Duration(totalTime), time.Duration(totalTime/int64(options.sigNumber))
+	fmt.Fprintf(logFile, "Presignature stats: total = %v, average = %v\n", tot, ave)
+
+	totalTime = int64(0)
+	for i := 0; i < options.sigNumber; i++ {
+		logMsg := fmt.Sprintf("Signing; round %d", i)
+		bench(logFile, logMsg, &totalTime, func() {
+			if _, err := proto.Sign(big.NewInt(int64(i))); err != nil {
+				fmt.Fprintf(logFile, "error during signing: %v\n", err)
 				return
 			}
 		})
 	}
 
-	for i := 0; i < options.sigNumber; i++ {
-		logMsg := fmt.Sprintf("Signing; round %d", i)
-		bench(logFile, logMsg, func() {
-			if _, err := proto.Sign(big.NewInt(int64(i))); err != nil {
-				fmt.Fprintf(logFile, "error during signing: %v\n.", err)
-				return
-			}
-		})
-	}
+	tot, ave = time.Duration(totalTime), time.Duration(totalTime/int64(options.sigNumber))
+	fmt.Fprintf(logFile, "Signing stats: total = %v, average = %v\n", tot, ave)
 
 	fmt.Fprintf(logFile, "All done!\n")
 }

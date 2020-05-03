@@ -98,6 +98,8 @@ def run_protocol(conn, pid, startTime):
         cmd = f'./tecdsa --pk {pid}.pk\
                     --keys_addrs keys_addrs\
                     --roundDuration 100ms\
+                    --sigNumber 1\
+                    --threshold 8\
                     --startTime "{startTime}"'
         x = f'dtach -n `mktemp -u /tmp/dtach.XXXX` {cmd}'
         conn.run(f'echo {x} > x')
