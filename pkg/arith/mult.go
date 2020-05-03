@@ -6,13 +6,15 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/binance-chain/tss-lib/crypto/paillier"
+
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/crypto/commitment"
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/crypto/zkpok"
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/sync"
 )
 
 // Mult computes a multiplication of two arithmetic secrets
-func Mult(a, b *ADSecret, cLabel string) (c *ADSecret, err error) {
+func Mult(a, b *ADSecret, cLabel string, priv *paillier.PrivateKey, pub *paillier.PublicKey, pubs []*paillier.PublicKey) (c *ADSecret, err error) {
 	nProc := len(a.egs)
 
 	c = &ADSecret{}
@@ -32,7 +34,7 @@ func Mult(a, b *ADSecret, cLabel string) (c *ADSecret, err error) {
 	}
 
 	// Step 2. Run priv mult and compute the share of c
-	if c.skShare, err = PrivMult(a.skShare, b.skShare, pid, nProc, a.server); err != nil {
+	if c.skShare, err = PrivMult(a.skShare, b.skShare, pid, nProc, a.server, priv, pub, pubs); err != nil {
 		return nil, err
 	}
 
@@ -145,7 +147,7 @@ func Mult(a, b *ADSecret, cLabel string) (c *ADSecret, err error) {
 }
 
 // PrivMult computes the product ab
-func PrivMult(a, b *big.Int, pid, nProc int, server sync.Server) (*big.Int, error) {
+func PrivMult(a, b *big.Int, pid, nProc int, server sync.Server, priv *paillier.PrivateKey, pub *paillier.PublicKey, pubs []*paillier.PublicKey) (*big.Int, error) {
 	// For all parties with id < pid, we act as Alice in MtA for a and Act as Bob for b.
 	// For all parties with id > pid, we act as Bob in MtA for a and act as Alice for b.
 
@@ -153,20 +155,26 @@ func PrivMult(a, b *big.Int, pid, nProc int, server sync.Server) (*big.Int, erro
 	// for id > pid send Enc(a) and wait for their Enc(b').
 
 	toSendBuf1 := make([][]byte, nProc)
+	encA, err := pub.Encrypt(a)
+	if err != nil {
+		return nil, err
+	}
+	encB, err := pub.Encrypt(b)
+	if err != nil {
+		return nil, err
+	}
 	for id := range toSendBuf1 {
-		// TODO: Paillier encrypt
 		if id < pid {
 			// Bob for b
-			toSendBuf1[id] = b.Bytes()
+			toSendBuf1[id] = encB.Bytes()
 		} else if id > pid {
 			// Bob for a
-			toSendBuf1[id] = a.Bytes()
+			toSendBuf1[id] = encA.Bytes()
 		}
 	}
 
 	encShares := make([]*big.Int, nProc)
 	check := func(id uint16, data []byte) error {
-		// TODO: Paillier decrypt
 		if id < uint16(pid) {
 			// Alice for a
 			encShares[id] = new(big.Int).SetBytes(data)
@@ -188,29 +196,40 @@ func PrivMult(a, b *big.Int, pid, nProc int, server sync.Server) (*big.Int, erro
 	toSendBuf2 := make([][]byte, nProc)
 	genEncABmt := func(id int, share *big.Int) error {
 		var err error
+		encABmt, err := pubs[id].HomoMult(share, encShares[id])
+		if err != nil {
+			return err
+		}
+
 		myShares[id], err = rand.Int(randReader, Q)
 		if err != nil {
 			return err
 		}
-		// TODO: homomorphic encrypt mult
-		encABmt := new(big.Int).Mul(share, encShares[id])
-		// TODO: homomorphic encrypt add
-		encABmt.Sub(encABmt, myShares[id])
+
+		negMyShare := new(big.Int).Sub(pubs[id].N, myShares[id])
+		enc, err := pubs[id].Encrypt(negMyShare)
+		if err != nil {
+			return err
+		}
+
+		encABmt, err = pubs[id].HomoAdd(encABmt, enc)
+		if err != nil {
+			return err
+		}
 		toSendBuf2[id] = encABmt.Bytes()
 
 		return nil
 	}
 
 	for id := range toSendBuf2 {
-		// TODO: Paillier encrypt
 		if id < pid {
-			// Alice for b
-			if err := genEncABmt(id, b); err != nil {
+			// Alice for a
+			if err := genEncABmt(id, a); err != nil {
 				return nil, err
 			}
 		} else if id > pid {
-			// Alice for a
-			if err := genEncABmt(id, a); err != nil {
+			// Alice for b
+			if err := genEncABmt(id, b); err != nil {
 				return nil, err
 			}
 		}
@@ -218,13 +237,14 @@ func PrivMult(a, b *big.Int, pid, nProc int, server sync.Server) (*big.Int, erro
 
 	abmts := make([]*big.Int, nProc) // collection of decrypted shares for Bob
 	check = func(id uint16, data []byte) error {
-		// TODO: Paillier decrypt
-		if id < uint16(pid) {
+		if id != uint16(pid) {
+			var err error
 			// Bob for b
 			abmts[id] = new(big.Int).SetBytes(data)
-		} else if id > uint16(pid) {
-			// Bob for a
-			abmts[id] = new(big.Int).SetBytes(data)
+			abmts[id].Sub(abmts[id], pub.N)
+			if abmts[id], err = priv.Decrypt(abmts[id]); err != nil {
+				return err
+			}
 		}
 
 		return nil

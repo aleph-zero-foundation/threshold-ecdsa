@@ -34,13 +34,13 @@ var _ = Describe("CheckDH Test", func() {
 		wg = stdsync.WaitGroup{}
 		netservs = tests.NewNetwork(int(nProc))
 		syncservs = make([]sync.Server, int(nProc))
+		start = time.Now().Add(time.Millisecond * 10)
 		for i := uint16(0); i < nProc; i++ {
 			syncservs[i] = sync.NewServer(i, nProc, start, roundTime, netservs[i])
 		}
 	})
 
 	BeforeEach(func() {
-		start = time.Now().Add(time.Millisecond * 10)
 		roundTime = 100 * time.Millisecond
 		rand.Seed(1729)
 		group = curve.NewSecp256k1Group()

@@ -33,6 +33,7 @@ var _ = Describe("TECDSA Test", func() {
 		wg = stdsync.WaitGroup{}
 		netservs = tests.NewNetwork(int(nProc))
 		syncservs = make([]sync.Server, nProc)
+		start = time.Now().Add(time.Millisecond * 10)
 		for i := uint16(0); i < nProc; i++ {
 			syncservs[i] = sync.NewServer(i, nProc, start, roundTime, netservs[i])
 		}
@@ -41,8 +42,7 @@ var _ = Describe("TECDSA Test", func() {
 	})
 
 	BeforeEach(func() {
-		start = time.Now().Add(time.Millisecond * 10)
-		roundTime = 20 * time.Millisecond
+		roundTime = 50 * time.Millisecond
 		rand.Seed(1729)
 	})
 
