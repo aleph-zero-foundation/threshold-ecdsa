@@ -245,9 +245,9 @@ def wait_in_region(target_state, region_name=default_region()):
         for i in instances: i.wait_until_terminated()
     elif target_state == 'open 22':
         for i in instances:
-            cmd = f'fab -i key_pairs/aleph.pem -H ubuntu@{i.public_ip_address} test'
+            cmd = f'fab -i key_pairs/aleph.pem -H ubuntu@{i.public_ip_address} test-conn'
             while call(cmd.split(), stderr=DEVNULL):
-                pass
+                sleep(1)
     if target_state == 'ssh ready':
         ids = [instance.id for instance in instances]
         initializing = True
@@ -443,8 +443,7 @@ def run_protocol(n_processes, regions=use_regions(), instance_type='t2.micro', p
     generate_keys(ip_list)
 
     color_print('waiting till ports are open on machines')
-    # wait('open 22', regions)
-    sleep(120)
+    wait('open 22', regions)
 
     color_print('pack the repo')
     call('rm -f tecdsa-repo.zip core-repo.zip'.split())
@@ -536,18 +535,19 @@ def deregister_image(regions, image_name):
         for i in images:
             print('   ', i.deregister())
 
-def get_logs_from_region(region, ip2pid, logs_per_region=1, with_prof=False):
+def get_logs_from_region(region, ip2pid, logs_per_region=1, with_out=False, with_prof=False):
     color_print(f'collecting logs in {region}')
     for k, ip in enumerate(instances_ip_in_region(region)):
         if k == logs_per_region:
             return
         pid = ip2pid[ip]
         run_task_for_ip('get-log', [ip], parallel=0, pids=[pid])
-        if with_prof:
+        if with_out:
+            run_task_for_ip('get-out', [ip], parallel=0, pids=[pid])
+        if with_prof == 0:
             run_task_for_ip('get-profile', [ip], parallel=0, pids=[pid])
 
-
-def get_logs(regions, pids, ip2pid, name, logs_per_region=1, with_prof=False):
+def get_logs(regions, pids, ip2pid, name, logs_per_region=1, with_out=False, with_prof=False):
     '''Retrieves all logs from instances.'''
 
     if not os.path.exists('../results'):
@@ -558,11 +558,15 @@ def get_logs(regions, pids, ip2pid, name, logs_per_region=1, with_prof=False):
         print('sth is in dir ../results; aborting')
         return
 
-    Parallel(n_jobs=N_JOBS)(delayed(get_logs_from_region)(region, ip2pid, logs_per_region, with_prof) for region in regions)
+    Parallel(n_jobs=N_JOBS)(delayed(get_logs_from_region)(region, ip2pid, logs_per_region, with_out, with_prof) for region in regions)
 
     color_print(f'{len(os.listdir("../results"))} files in ../results')
 
+    with open('data/config.json') as f:
+        config = json.loads(''.join(f.readlines()))
+
     n_processes = len(ip2pid)
+
     result_path = f'{name}'
 
     color_print('move and rename dir')
@@ -576,7 +580,7 @@ def get_logs(regions, pids, ip2pid, name, logs_per_region=1, with_prof=False):
         os.remove(path)
 
     color_print('zip the dir with all the files')
-    with zipfile.ZipFile(result_path+'.zip', 'w') as zf:
+    with zipfile.ZipFile(result_path+'.zip', 'w', zipfile.ZIP_DEFLATED) as zf:
         # write logs
         for path in os.listdir(result_path):
             path = os.path.join(result_path, path)
@@ -599,6 +603,7 @@ def get_logs(regions, pids, ip2pid, name, logs_per_region=1, with_prof=False):
 
     os.rmdir(result_path)
     color_print('done')
+
 
 #======================================================================================
 #                                        shortcuts

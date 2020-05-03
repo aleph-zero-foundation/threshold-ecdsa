@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"math/big"
 	"os"
 	"os/signal"
@@ -170,7 +171,7 @@ type cliOptions struct {
 	keysAddrsFilename string
 	startTime         string
 	roundDuration     string
-	presigNumber      int
+	sigNumber         int
 	threshold         int
 }
 
@@ -180,12 +181,19 @@ func getOptions() *cliOptions {
 	flag.StringVar(&options.keysAddrsFilename, "keys_addrs", "", "a file with keys and associated addresses")
 	flag.StringVar(&options.startTime, "startTime", "", "time at which start the protocol")
 	flag.StringVar(&options.roundDuration, "roundDuration", "", "duration of a round")
-	flag.IntVar(&options.presigNumber, "presigNumber", 1, "number of presignatures generated during init")
+	flag.IntVar(&options.sigNumber, "sigNumber", 1, "number of signatures to generate")
 	flag.IntVar(&options.threshold, "threshold", 1, "number of parties that must cooperate to sign a message")
 
 	flag.Parse()
 
 	return &options
+}
+
+func bench(w io.Writer, name string, job func()) {
+	start := time.Now()
+	job()
+	ellapsed := time.Since(start)
+	fmt.Fprintf(w, "job %s took %v\n", name, ellapsed)
 }
 
 func main() {
@@ -244,30 +252,39 @@ func main() {
 		fmt.Fprintf(logFile, "Error in parsing roundDuration: %v\n.", err)
 		return
 	}
+
 	nProc := uint16(len(committee.addresses))
-	fmt.Fprintf(logFile, "nProc:%v\nstartTime:%v\ncurrentTime:%v\nroundDuration:%v\n", nProc, start, time.Now().UTC().Format(time.UnixDate), roundDuration)
+	fmt.Fprintf(logFile, "nProc:%v\nsigNumber:%v\nstartTime:%v\ncurrentTime:%v\nroundDuration:%v\n", nProc, options.sigNumber, start, time.Now().UTC().Format(time.UnixDate), roundDuration)
+
 	server := sync.NewServer(uint16(member.pid), nProc, startTime, roundDuration, net)
 
-	proto, err := tecdsa.Init(nProc, server)
-	if err != nil {
-		fmt.Fprintf(logFile, "error during tecdsa initialization: %v\n.", err)
-		return
+	var proto *tecdsa.Protocol
+	bench(logFile, "tecdsa.Init", func() {
+		proto, err = tecdsa.Init(nProc, server)
+		if err != nil {
+			fmt.Fprintf(logFile, "error during tecdsa initialization: %v\n.", err)
+			os.Exit(1)
+		}
+	})
+
+	for i := 0; i < options.sigNumber; i++ {
+		logMsg := fmt.Sprintf("Generating a presignature; round %d", i)
+		bench(logFile, logMsg, func() {
+			if err = proto.Presign(uint16(options.threshold)); err != nil {
+				fmt.Fprintf(logFile, "error during generating a presignature: %v\n.", err)
+				return
+			}
+		})
 	}
 
-	if err = proto.Presign(uint16(options.threshold)); err != nil {
-		fmt.Fprintf(logFile, "error during tecdsa initialization: %v\n.", err)
-		return
-	}
-
-	sign, err := proto.Sign(big.NewInt(1))
-	if err != nil {
-		fmt.Fprintf(logFile, "error during tecdsa initialization: %v\n.", err)
-		return
-	}
-
-	if sign == nil {
-		fmt.Fprintf(logFile, "signature should be nonempty.")
-		return
+	for i := 0; i < options.sigNumber; i++ {
+		logMsg := fmt.Sprintf("Signing; round %d", i)
+		bench(logFile, logMsg, func() {
+			if _, err := proto.Sign(big.NewInt(int64(i))); err != nil {
+				fmt.Fprintf(logFile, "error during signing: %v\n.", err)
+				return
+			}
+		})
 	}
 
 	fmt.Fprintf(logFile, "All done!\n")
