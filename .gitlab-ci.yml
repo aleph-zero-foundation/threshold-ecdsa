@@ -27,10 +27,10 @@ unit_tests:
   script:
     - .gitlab/ci/make_test.sh ${TOTEST}
 
-# race_detector:
-#   stage: test
-#   script:
-#     - .gitlab/ci/make_race.sh ${TOTEST}
+race_detector:
+  stage: test
+  script:
+    - .gitlab/ci/make_race.sh ${TOTEST}
 
 code_coverage_report:
   stage: build
