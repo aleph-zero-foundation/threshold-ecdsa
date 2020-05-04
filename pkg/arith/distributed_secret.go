@@ -115,53 +115,30 @@ func (tds *TDSecret) Exp() (*TDKey, error) {
 		}
 	}
 
-	lagrangeElement := func(index int, value curve.Point, group curve.Group, nProc uint16) curve.Point {
-		numerator := big.NewInt(1)
-		denominator := big.NewInt(1)
-
-		bigIndex := big.NewInt(int64(index))
-
-		for j := 0; j < int(nProc); j++ {
-			if index != j {
-				argument := big.NewInt(int64(j))
-
-				partialNumerator := new(big.Int).Neg(new(big.Int).Add(argument, big.NewInt(1)))
-				partialDenominator := new(big.Int).Sub(bigIndex, argument)
-
-				numerator.Mul(numerator, partialNumerator)
-				numerator.Mod(numerator, group.Order())
-
-				denominator.Mul(denominator, partialDenominator)
-				denominator.Mod(denominator, group.Order())
-			}
-		}
-
-		denominator.ModInverse(denominator, group.Order())
-
-		scale := new(big.Int).Mul(numerator, denominator)
-		scale.Mod(scale, group.Order())
-
-		element := group.ScalarMult(value, scale)
-		return element
-	}
-
-	// TODO: Add possibility that someone didn't send his share
 	var wg stdsync.WaitGroup
 	channel := make(chan curve.Point, nProc)
 	counter := tds.t
 
+	args := make([]*big.Int, tds.t)
+	values := make([]curve.Point, tds.t)
 	for i, value := range tdk.pkShares {
-		if value != nil {
-			wg.Add(1)
-			go func(i int, value curve.Point) {
-				defer wg.Done()
-				channel <- lagrangeElement(i, value, group, uint16(nProc))
-			}(i, value)
-			counter = counter - 1
+		if value == nil {
+			continue
 		}
+		args[i] = big.NewInt(int64(i))
+		values[i] = value
+		counter = counter - 1
 		if counter == 0 {
 			break
 		}
+	}
+
+	for i, arg := range args {
+		wg.Add(1)
+		go func(i int, arg *big.Int) {
+			defer wg.Done()
+			channel <- group.ScalarMult(values[i], lagrangeCoef(arg, args, group.Order()))
+		}(i, arg)
 	}
 
 	go func() {
@@ -170,7 +147,6 @@ func (tds *TDSecret) Exp() (*TDKey, error) {
 	}()
 
 	publicKey := group.Neutral()
-
 	for elem := range channel {
 		publicKey = group.Add(publicKey, elem)
 	}
