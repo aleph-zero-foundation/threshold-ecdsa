@@ -41,18 +41,22 @@ var _ = Describe("Secret Test", func() {
 		start = time.Now().Add(time.Millisecond * 10)
 		for i := uint16(0); i < nProc; i++ {
 			syncservs[i] = sync.NewServer(i, nProc, start, roundTime, netservs[i])
+			syncservs[i].Start()
 		}
 		errors = make([]error, nProc)
 	})
 
 	BeforeEach(func() {
 		label = "x"
-		roundTime = 50 * time.Millisecond
+		roundTime = 100 * time.Millisecond
 		rand.Seed(1729)
 		group = curve.NewSecp256k1Group()
 	})
 
 	AfterEach(func() {
+		for i := uint16(0); i < nProc; i++ {
+			syncservs[i].Stop()
+		}
 		tests.CloseNetwork(netservs)
 	})
 

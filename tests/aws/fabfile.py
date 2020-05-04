@@ -99,7 +99,7 @@ def run_protocol(conn, pid, startTime):
                     --keys_addrs keys_addrs\
                     --roundDuration 100ms\
                     --sigNumber 1\
-                    --threshold 8\
+                    --threshold 1\
                     --startTime "{startTime}"'
         x = f'dtach -n `mktemp -u /tmp/dtach.XXXX` {cmd}'
         conn.run(f'echo {x} > x')
@@ -156,7 +156,7 @@ def get_log(conn, pid):
 def get_out(conn, pid):
     ''' Retrieves aleph stdout from the server.'''
 
-    repo_path = '/home/ubuntu/go/src/gitlab.com/alephledger/consensus-go'
+    repo_path = '/home/ubuntu/go/src/gitlab.com/alephledger/threshold-ecdsa'
     with conn.cd(repo_path):
         conn.run(f'cp out {pid}.out')
         conn.run(f'zip -q {pid}.out.zip {pid}.out')

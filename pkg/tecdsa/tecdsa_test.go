@@ -36,6 +36,7 @@ var _ = Describe("TECDSA Test", func() {
 		start = time.Now().Add(time.Millisecond * 10)
 		for i := uint16(0); i < nProc; i++ {
 			syncservs[i] = sync.NewServer(i, nProc, start, roundTime, netservs[i])
+			syncservs[i].Start()
 		}
 		protos = make([]*tecdsa.Protocol, nProc)
 		errors = make([]error, nProc)
@@ -47,6 +48,9 @@ var _ = Describe("TECDSA Test", func() {
 	})
 
 	AfterEach(func() {
+		for i := uint16(0); i < nProc; i++ {
+			syncservs[i].Stop()
+		}
 		tests.CloseNetwork(netservs)
 	})
 

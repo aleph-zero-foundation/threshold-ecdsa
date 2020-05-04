@@ -258,9 +258,10 @@ func main() {
 	}
 
 	nProc := uint16(len(committee.addresses))
-	fmt.Fprintf(logFile, "nProc:%v\nsigNumber:%v\ncurrentTime:%v\nstartTime:%v\nroundDuration:%v\n", nProc, options.sigNumber, time.Now().UTC().Format(time.UnixDate), start, roundDuration)
+	fmt.Fprintf(logFile, "nProc:%v\nsigNumber:%v\nthreshold:%v\ncurrentTime:%v\nstartTime:%v\nroundDuration:%v\n", nProc, options.sigNumber, options.threshold, time.Now().UTC().Format(time.UnixDate), start, roundDuration)
 
 	server := sync.NewServer(uint16(member.pid), nProc, startTime, roundDuration, net)
+	server.Start()
 
 	var proto *tecdsa.Protocol
 	bench(logFile, "tecdsa.Init", nil, func() {
@@ -299,5 +300,6 @@ func main() {
 	tot, ave = time.Duration(totalTime), time.Duration(totalTime/int64(options.sigNumber))
 	fmt.Fprintf(logFile, "Signing stats: total = %v, average = %v\n", tot, ave)
 
+	server.Stop()
 	fmt.Fprintf(logFile, "All done!\n")
 }

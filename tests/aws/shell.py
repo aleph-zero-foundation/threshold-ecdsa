@@ -544,7 +544,7 @@ def get_logs_from_region(region, ip2pid, logs_per_region=1, with_out=False, with
         run_task_for_ip('get-log', [ip], parallel=0, pids=[pid])
         if with_out:
             run_task_for_ip('get-out', [ip], parallel=0, pids=[pid])
-        if with_prof == 0:
+        if with_prof:
             run_task_for_ip('get-profile', [ip], parallel=0, pids=[pid])
 
 def get_logs(regions, pids, ip2pid, name, logs_per_region=1, with_out=False, with_prof=False):

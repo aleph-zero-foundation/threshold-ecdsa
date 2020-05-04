@@ -12,27 +12,32 @@ import (
 	"gitlab.com/alephledger/core-go/pkg/network"
 )
 
-const (
-	timeout = time.Second
-)
-
 // Server implements
-// TODO explain counting round internally
 type Server interface {
+	Start()
+	Stop()
 	Round([][]byte, func(uint16, []byte) error) error
 }
 
 type server struct {
-	sync.Mutex
 	pid, nProc    uint16
 	startTime     time.Time
 	roundDuration time.Duration
 	roundID       int64
 	net           network.Server
+	dataChan      []chan ([]byte)
+	mx            sync.RWMutex
+	quit          bool
+	prevRoundEnd  time.Time
 }
 
 // NewServer construcs a SyncServer object
 func NewServer(pid, nProc uint16, startTime time.Time, roundDuration time.Duration, net network.Server) Server {
+	chans := make([]chan []byte, nProc)
+	for i := range chans {
+		// TODO: to bu or not to bu
+		chans[i] = make(chan []byte, 2)
+	}
 	return &server{
 		pid:           pid,
 		nProc:         nProc,
@@ -40,10 +45,59 @@ func NewServer(pid, nProc uint16, startTime time.Time, roundDuration time.Durati
 		roundDuration: roundDuration,
 		roundID:       -1,
 		net:           net,
+		dataChan:      chans,
+	}
+}
+
+func (s *server) Start() {
+	for range s.dataChan {
+		go func() {
+			for {
+				s.mx.RLock()
+				if s.quit {
+					s.mx.RUnlock()
+					return
+				}
+				conn, err := s.net.Listen(10 * time.Millisecond)
+				if err != nil {
+					s.mx.RUnlock()
+					continue
+				}
+
+				defer conn.Close()
+				conn.TimeoutAfter(s.roundDuration)
+				buf := bytes.Buffer{}
+				_, err = buf.ReadFrom(conn)
+				if err != nil {
+					s.mx.RUnlock()
+					panic(err.Error())
+				}
+
+				pid := binary.LittleEndian.Uint16(buf.Bytes()[:2])
+				select {
+				case s.dataChan[pid] <- buf.Bytes()[2:]:
+				default:
+					s.mx.RUnlock()
+					panic("buffer server.dataChan overloaded")
+				}
+				s.mx.RUnlock()
+			}
+		}()
+	}
+}
+
+func (s *server) Stop() {
+	s.mx.Lock()
+	defer s.mx.Unlock()
+	s.quit = true
+	for _, c := range s.dataChan {
+		close(c)
 	}
 }
 
 func (s *server) Round(toSend [][]byte, check func(uint16, []byte) error) error {
+	defer func() { s.prevRoundEnd = time.Now() }()
+
 	s.roundID++
 	if s.roundID == 0 {
 		// TODO: temporary solution for scheduling the start, rewrite this ugly sleep
@@ -53,6 +107,11 @@ func (s *server) Round(toSend [][]byte, check func(uint16, []byte) error) error 
 		}
 		time.Sleep(d)
 
+	} else {
+		// TODO: This is rather dirty hack for ensuring that rounds dont interlace
+		if time.Since(s.prevRoundEnd) < time.Millisecond {
+			time.Sleep(time.Millisecond)
+		}
 	}
 
 	endRound := time.Now().Add(s.roundDuration)
@@ -93,13 +152,13 @@ func (s *server) Round(toSend [][]byte, check func(uint16, []byte) error) error 
 	}
 
 	if len(wrong) > 0 {
-		return newRoundError(fmt.Errorf("Data sent by the parties %v is wrong with errors %v", wrong, errors).Error(), wrong)
+		return newRoundError(fmt.Errorf("rid:%v: Data sent by the parties %v is wrong with errors %v", s.roundID, wrong, errors).Error(), wrong)
 	}
 
 	// TODO: better timeout handling
 	d := time.Until(endRound)
 	if d < 0 {
-		return wrap(fmt.Errorf("receiving took too long %v", -d))
+		return wrap(fmt.Errorf("rid:%v: Round: receiving took too long %v", s.roundID, d))
 	}
 
 	return nil
@@ -123,13 +182,13 @@ func (s *server) sendToAll(toSend [][]byte) error {
 		}
 		go func(pid uint16) {
 			defer wg.Done()
-			conn, err := s.net.Dial(pid, timeout)
+			conn, err := s.net.Dial(pid, s.roundDuration)
 			if err != nil {
 				errors[pid] = err
 				return
 			}
 			defer conn.Close()
-			conn.TimeoutAfter(timeout)
+			conn.TimeoutAfter(s.roundDuration)
 			var d []byte
 			if data == nil {
 				d = make([]byte, 10+len(toSend[pid]))
@@ -165,7 +224,7 @@ func (s *server) sendToAll(toSend [][]byte) error {
 	}
 
 	if b.Len() > 0 {
-		return fmt.Errorf(b.String())
+		return fmt.Errorf("rid:%v: %v", s.roundID, b.String())
 	}
 
 	return nil
@@ -184,33 +243,28 @@ func (s *server) receiveFromAll(endRound time.Time) ([][]byte, []uint16, error) 
 		}
 		go func(i uint16) {
 			defer wg.Done()
+			ticker := time.NewTicker(s.roundDuration)
+			defer ticker.Stop()
 
-			conn, err := s.net.Listen(timeout)
-			if err != nil {
-				errors[i] = err
+			var buf []byte
+			select {
+			case <-ticker.C:
+				errors[i] = fmt.Errorf("timeout in roundID:%v for pid:%v", s.roundID, i)
+				return
+			case buf = <-s.dataChan[i]:
+
+			}
+			if len(buf) < 8 {
+				errors[i] = fmt.Errorf("rid:%v: received too short data", s.roundID)
 				return
 			}
-
-			defer conn.Close()
-			conn.TimeoutAfter(timeout)
-
-			buf := bytes.Buffer{}
-			_, err = buf.ReadFrom(conn)
-			if err != nil {
-				errors[i] = err
-				return
-			}
-			if len(buf.Bytes()) < 10 {
-				errors[i] = fmt.Errorf("received too short data")
-				return
-			}
-			pid := binary.LittleEndian.Uint16(buf.Bytes()[:2])
-			roundID := binary.LittleEndian.Uint64(buf.Bytes()[2:10])
+			roundID := binary.LittleEndian.Uint64(buf[:8])
 			if int64(roundID) != s.roundID {
-				errors[i] = fmt.Errorf("received data for wrong round. Expected %d, got %d", s.roundID, roundID)
+				errors[i] = fmt.Errorf("received data for wrong round from pid:%v. Expected %d, got %d", i, s.roundID, roundID)
+				return
 			}
 
-			data[pid] = buf.Bytes()[10:]
+			data[i] = buf[8:]
 		}(i)
 	}
 
@@ -219,7 +273,7 @@ func (s *server) receiveFromAll(endRound time.Time) ([][]byte, []uint16, error) 
 	// TODO: better timeout handling
 	d := time.Until(endRound)
 	if d < 0 {
-		return nil, nil, fmt.Errorf("receiving took to long %v", -d)
+		return nil, nil, fmt.Errorf("rid:%v: receiveFromAll: receiving took to long %v", s.roundID, d)
 	}
 
 	var b strings.Builder
@@ -235,7 +289,7 @@ func (s *server) receiveFromAll(endRound time.Time) ([][]byte, []uint16, error) 
 	}
 
 	if b.Len() > 0 {
-		return nil, missing, fmt.Errorf(b.String())
+		return nil, missing, fmt.Errorf("rid:%v: %v", s.roundID, b.String())
 	}
 
 	return data, nil, nil
