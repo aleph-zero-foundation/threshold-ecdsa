@@ -79,11 +79,12 @@ var _ = Describe("CheckDH Test", func() {
 					aSecretValue := big.NewInt(rand.Int63())
 					bSecretValue := big.NewInt(rand.Int63())
 
-					aSecret := arith.NewDSecret("alice", aSecretValue, syncservs[alice])
-					bSecret := arith.NewDSecret("alice", bSecretValue, syncservs[bob])
+					aSecret := arith.NewDSecret(alice, "x", aSecretValue, syncservs[alice])
+					bSecret := arith.NewDSecret(bob, "x", bSecretValue, syncservs[bob])
 
-					keys[alice] = arith.NewDKey(aSecret, group.ScalarBaseMult(aSecretValue), []curve.Point{nil, group.ScalarBaseMult(bSecretValue)}, group)
-					keys[bob] = arith.NewDKey(bSecret, group.ScalarBaseMult(bSecretValue), []curve.Point{group.ScalarBaseMult(aSecretValue), nil}, group)
+					pkShares := []curve.Point{group.ScalarBaseMult(aSecretValue), group.ScalarBaseMult(bSecretValue)}
+					keys[alice] = arith.NewDKey(aSecret, pkShares, group)
+					keys[bob] = arith.NewDKey(bSecret, pkShares, group)
 
 					u = group.ScalarBaseMult(big.NewInt(rand.Int63()))
 					v = group.ScalarMult(u, new(big.Int).Add(aSecretValue, bSecretValue))
@@ -110,11 +111,12 @@ var _ = Describe("CheckDH Test", func() {
 					aSecretValue := big.NewInt(rand.Int63())
 					bSecretValue := big.NewInt(rand.Int63())
 
-					aSecret := arith.NewDSecret("alice", aSecretValue, syncservs[alice])
-					bSecret := arith.NewDSecret("alice", bSecretValue, syncservs[bob])
+					aSecret := arith.NewDSecret(alice, "x", aSecretValue, syncservs[alice])
+					bSecret := arith.NewDSecret(alice, "x", bSecretValue, syncservs[bob])
 
-					keys[alice] = arith.NewDKey(aSecret, group.ScalarBaseMult(aSecretValue), []curve.Point{nil, group.ScalarBaseMult(bSecretValue)}, group)
-					keys[bob] = arith.NewDKey(bSecret, group.ScalarBaseMult(bSecretValue), []curve.Point{group.ScalarBaseMult(aSecretValue), nil}, group)
+					pkShares := []curve.Point{group.ScalarBaseMult(aSecretValue), group.ScalarBaseMult(bSecretValue)}
+					keys[alice] = arith.NewDKey(aSecret, pkShares, group)
+					keys[bob] = arith.NewDKey(bSecret, pkShares, group)
 
 					u = group.ScalarBaseMult(big.NewInt(rand.Int63()))
 					v = group.ScalarMult(u, new(big.Int).Add(new(big.Int).Add(aSecretValue, big.NewInt(1)), bSecretValue))

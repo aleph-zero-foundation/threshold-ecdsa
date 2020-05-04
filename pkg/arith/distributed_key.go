@@ -16,23 +16,19 @@ import (
 type DKey struct {
 	secret   *DSecret
 	pk       curve.Point
-	pkShare  curve.Point
 	pkShares []curve.Point
 }
 
 // NewDKey returns a pointer to new DKey instance
-func NewDKey(secret *DSecret, pkShare curve.Point, pkShares []curve.Point, group curve.Group) *DKey {
-	pk := pkShare
-	for _, pkOtherShare := range pkShares {
-		if pkOtherShare != nil {
-			pk = group.Add(pk, pkOtherShare)
-		}
+func NewDKey(secret *DSecret, pkShares []curve.Point, group curve.Group) *DKey {
+	pk := group.Neutral()
+	for _, pkShare := range pkShares {
+		pk = group.Add(pk, pkShare)
 	}
 
 	return &DKey{
 		secret:   secret,
 		pk:       pk,
-		pkShare:  pkShare,
 		pkShares: pkShares,
 	}
 }
@@ -126,19 +122,21 @@ func (nmc *NMCtmp) Verify(dataBytes, zkpBytes []byte) error {
 }
 
 // GenExpReveal is a method for generating a new distirbuted key
-func GenExpReveal(label string, server sync.Server, nProc uint16, group curve.Group) (*DKey, error) {
+func GenExpReveal(pid uint16, label string, server sync.Server, nProc uint16, group curve.Group) (*DKey, error) {
 	// generate a secret key share
 	skShare, err := rand.Int(randReader, Q)
 	if err != nil {
 		return nil, err
 	}
-	dSecret := NewDSecret(label, skShare, server)
-	pkShare := group.ScalarBaseMult(dSecret.skShare)
+	dSecret := &DSecret{pid, label, skShare, server}
+
+	pkShares := make([]curve.Point, nProc)
+	pkShares[pid] = group.ScalarBaseMult(dSecret.skShare)
 
 	// Round 1: commmit to (g^{a_k}, pi_k)
 	// TODO: replace with a proper zkpok and nmc when it's ready, now it sends just the values
 	toSendBuf := &bytes.Buffer{}
-	if err = group.Encode(pkShare, toSendBuf); err != nil {
+	if err = group.Encode(pkShares[pid], toSendBuf); err != nil {
 		return nil, err
 	}
 	dataBytes := make([]byte, len(toSendBuf.Bytes()))
@@ -175,14 +173,13 @@ func GenExpReveal(label string, server sync.Server, nProc uint16, group curve.Gr
 
 	// Round 2: decommit to (g^{a_k}, pi_k)
 	toSendBuf.Reset()
-	if err = group.Encode(pkShare, toSendBuf); err != nil {
+	if err = group.Encode(pkShares[pid], toSendBuf); err != nil {
 		return nil, err
 	}
 	if err = zkp.Encode(toSendBuf); err != nil {
 		return nil, err
 	}
 
-	pkShares := make([]curve.Point, nProc)
 	check = func(pid uint16, data []byte) error {
 		buf := bytes.NewBuffer(data)
 		cp, err := group.Decode(buf)
@@ -211,5 +208,5 @@ func GenExpReveal(label string, server sync.Server, nProc uint16, group curve.Gr
 		return nil, err
 	}
 
-	return NewDKey(dSecret, pkShare, pkShares, group), nil
+	return NewDKey(dSecret, pkShares, group), nil
 }

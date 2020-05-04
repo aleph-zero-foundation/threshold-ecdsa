@@ -24,7 +24,7 @@ type presig struct {
 
 // Protocol implements the tECDSA protocol
 type Protocol struct {
-	nProc      uint16
+	pid, nProc uint16
 	key, egKey *arith.DKey
 	egf        *commitment.ElGamalFactory
 	presig     []*presig
@@ -34,16 +34,16 @@ type Protocol struct {
 
 // Init constructs a new instance of tECDSA protocol and
 // generates a private key for signing and a secret for commitments
-func Init(nProc uint16, network sync.Server) (*Protocol, error) {
-	p := &Protocol{nProc: nProc, network: network}
+func Init(pid, nProc uint16, network sync.Server) (*Protocol, error) {
+	p := &Protocol{pid: pid, nProc: nProc, network: network}
 
 	var err error
 	p.group = curve.NewSecp256k1Group()
-	p.key, err = arith.GenExpReveal("x", p.network, p.nProc, p.group)
+	p.key, err = arith.GenExpReveal(pid, "x", p.network, p.nProc, p.group)
 	if err != nil {
 		return nil, err
 	}
-	p.egKey, err = arith.GenExpReveal("h", p.network, p.nProc, p.group)
+	p.egKey, err = arith.GenExpReveal(pid, "h", p.network, p.nProc, p.group)
 	if err != nil {
 		return nil, err
 	}
@@ -56,16 +56,16 @@ func Init(nProc uint16, network sync.Server) (*Protocol, error) {
 func (p *Protocol) Presign(t uint16) error {
 	var err error
 	var k, rho, eta, tau *arith.ADSecret
-	if k, err = arith.Gen("k", p.network, p.egf, p.nProc); err != nil {
+	if k, err = arith.Gen("k", p.network, p.egf, p.pid, p.nProc); err != nil {
 		return err
 	}
-	if rho, err = arith.Gen("rho", p.network, p.egf, p.nProc); err != nil {
+	if rho, err = arith.Gen("rho", p.network, p.egf, p.pid, p.nProc); err != nil {
 		return err
 	}
-	if eta, err = arith.Gen("eta", p.network, p.egf, p.nProc); err != nil {
+	if eta, err = arith.Gen("eta", p.network, p.egf, p.pid, p.nProc); err != nil {
 		return err
 	}
-	if tau, err = arith.Gen("tau", p.network, p.egf, p.nProc); err != nil {
+	if tau, err = arith.Gen("tau", p.network, p.egf, p.pid, p.nProc); err != nil {
 		return err
 	}
 

@@ -50,7 +50,7 @@ func (ads *ADSecret) Reshare(t uint16) (*TDSecret, error) {
 
 	// STEP 2. Pick a random polynomial f of degree t such that f(0) = ads.skShare
 	var f []*big.Int
-	if f, err = poly(t, ads.skShare); err != nil {
+	if f, err = poly(t-1, ads.skShare); err != nil {
 		return nil, err
 	}
 
@@ -294,13 +294,13 @@ func (ads *ADSecret) Reshare(t uint16) (*TDSecret, error) {
 	if shareRandRefresh, err = rand.Int(randReader, Q); err != nil {
 		return nil, err
 	}
-	shareComm := ads.egf.Create(share, shareRandRefresh)
+	shareComms[ads.pid] = ads.egf.Create(share, shareRandRefresh)
 	// TODO: ...
 	egrefresh = zkpok.NoopZKproof{}
 	if err := egrefresh.Encode(toSendBuf); err != nil {
 		return nil, err
 	}
-	if err := shareComm.Encode(toSendBuf); err != nil {
+	if err := shareComms[ads.pid].Encode(toSendBuf); err != nil {
 		return nil, err
 	}
 
@@ -328,45 +328,7 @@ func (ads *ADSecret) Reshare(t uint16) (*TDSecret, error) {
 	tds := &TDSecret{*ads, t}
 	ads.skShare = share
 	ads.r = shareRandRefresh
-	ads.eg = shareComm
 	ads.egs = shareComms
 
 	return tds, nil
-}
-
-func poly(t uint16, a0 *big.Int) ([]*big.Int, error) {
-	var err error
-	f := make([]*big.Int, t)
-	for i := range f {
-		if i == 0 {
-			f[i] = a0
-			continue
-		}
-		if i == int(t)-1 {
-			tmp := big.NewInt(1)
-			tmp.Sub(Q, tmp)
-			if f[i], err = rand.Int(randReader, tmp); err != nil {
-				return nil, err
-			}
-			tmp.SetInt64(1)
-			f[i].Add(f[i], tmp)
-
-			continue
-		}
-		if f[i], err = rand.Int(randReader, Q); err != nil {
-			return nil, err
-		}
-	}
-	return f, nil
-}
-
-func polyEval(f []*big.Int, x *big.Int, q *big.Int) *big.Int {
-	deg := len(f) - 1
-	eval := new(big.Int).Set(f[deg])
-	for i := deg - 1; i >= 0; i-- {
-		eval.Mul(eval, x)
-		eval.Add(eval, f[i])
-	}
-	eval.Mod(eval, q)
-	return eval
 }

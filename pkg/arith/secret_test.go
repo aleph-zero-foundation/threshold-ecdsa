@@ -33,6 +33,7 @@ var _ = Describe("Secret Test", func() {
 		errors    []error
 		group     curve.Group
 	)
+
 	JustBeforeEach(func() {
 		wg = stdsync.WaitGroup{}
 		netservs = tests.NewNetwork(int(nProc))
@@ -41,9 +42,11 @@ var _ = Describe("Secret Test", func() {
 		for i := uint16(0); i < nProc; i++ {
 			syncservs[i] = sync.NewServer(i, nProc, start, roundTime, netservs[i])
 		}
+		errors = make([]error, nProc)
 	})
 
 	BeforeEach(func() {
+		label = "x"
 		roundTime = 50 * time.Millisecond
 		rand.Seed(1729)
 		group = curve.NewSecp256k1Group()
@@ -53,217 +56,433 @@ var _ = Describe("Secret Test", func() {
 		tests.CloseNetwork(netservs)
 	})
 
-	Describe("Two parties", func() {
-
-		var (
-			alice, bob uint16
-		)
-
-		gen := func(ads []*arith.ADSecret, label string, egf *commitment.ElGamalFactory) {
-			wg.Add(int(nProc))
-			go func() {
+	genSecret := func(ads []*arith.ADSecret, label string, egf *commitment.ElGamalFactory) {
+		wg.Add(int(nProc))
+		for i := uint16(0); i < nProc; i++ {
+			go func(i uint16) {
 				defer wg.Done()
-				ads[alice], errors[alice] = arith.Gen(label, syncservs[alice], egf, nProc)
-			}()
-			go func() {
-				defer wg.Done()
-				ads[bob], errors[bob] = arith.Gen(label, syncservs[bob], egf, nProc)
-			}()
-			wg.Wait()
-
-			Expect(errors[alice]).NotTo(HaveOccurred())
-			Expect(errors[bob]).NotTo(HaveOccurred())
-			Expect(ads[alice]).NotTo(BeNil())
-			Expect(ads[bob]).NotTo(BeNil())
+				ads[i], errors[i] = arith.Gen(label, syncservs[i], egf, i, nProc)
+			}(i)
 		}
 
-		BeforeEach(func() {
-			alice = 0
-			bob = 1
-			nProc = 2
-			label = "x"
-		})
+		wg.Wait()
+		for i := uint16(0); i < nProc; i++ {
+			Expect(errors[i]).NotTo(HaveOccurred())
+			Expect(ads[i]).NotTo(BeNil())
+		}
+	}
 
-		Describe("Generating arithmetic distributed secrets with arith.Gen", func() {
+	genKey := func(dks []*arith.DKey) {
+		wg.Add(int(nProc))
+		for i := uint16(0); i < nProc; i++ {
+			go func(i uint16) {
+				defer wg.Done()
+				dks[i], errors[i] = arith.GenExpReveal(i, label, syncservs[i], nProc, group)
+			}(i)
+		}
 
-			var (
-				ads []*arith.ADSecret
-				egf *commitment.ElGamalFactory
-			)
+		wg.Wait()
+		for i := uint16(0); i < nProc; i++ {
+			Expect(errors[i]).NotTo(HaveOccurred())
+			Expect(dks[i]).NotTo(BeNil())
+		}
+	}
+
+	reshare := func(ads []*arith.ADSecret, tds []*arith.TDSecret, t uint16) {
+		wg.Add(int(nProc))
+		for i := uint16(0); i < nProc; i++ {
+			go func(i uint16) {
+				defer wg.Done()
+				tds[i], errors[i] = ads[i].Reshare(t)
+			}(i)
+		}
+		wg.Wait()
+
+		for i := uint16(0); i < nProc; i++ {
+			Expect(errors[i]).NotTo(HaveOccurred())
+			Expect(tds[i]).NotTo(BeNil())
+		}
+	}
+
+	exp := func(tds []*arith.TDSecret, tdks []*arith.TDKey) {
+		wg.Add(int(nProc))
+		for i := uint16(0); i < nProc; i++ {
+			go func(i uint16) {
+				defer wg.Done()
+				tdks[i], errors[i] = tds[i].Exp()
+			}(i)
+		}
+		wg.Wait()
+
+		for i := uint16(0); i < nProc; i++ {
+			Expect(errors[i]).NotTo(HaveOccurred())
+			Expect(tdks[i]).NotTo(BeNil())
+		}
+	}
+
+	mult := func(a, b, c []*arith.ADSecret, cl string) {
+		privs := make([]*paillier.PrivateKey, nProc)
+		pubs := make([]*paillier.PublicKey, nProc)
+		bitLen := 264
+		timeout := 1 * time.Second
+
+		wg.Add(int(nProc))
+		for i := uint16(0); i < nProc; i++ {
+			go func(i uint16) {
+				defer wg.Done()
+				privs[i], pubs[i], errors[i] = paillier.GenerateKeyPair(bitLen, timeout)
+			}(i)
+		}
+		wg.Wait()
+
+		for i := uint16(0); i < nProc; i++ {
+			Expect(errors[i]).NotTo(HaveOccurred())
+			Expect(privs[i]).NotTo(BeNil())
+			Expect(pubs[i]).NotTo(BeNil())
+		}
+
+		wg.Add(int(nProc))
+		for i := uint16(0); i < nProc; i++ {
+			go func(i uint16) {
+				defer wg.Done()
+				c[i], errors[i] = arith.Mult(a[i], b[i], cl, privs[i], pubs[i], pubs)
+			}(i)
+		}
+		wg.Wait()
+
+		for i := uint16(0); i < nProc; i++ {
+			Expect(errors[i]).NotTo(HaveOccurred())
+			Expect(c[i]).NotTo(BeNil())
+		}
+
+	}
+
+	Describe("Generating arithmetic distributed secrets with arith.Gen", func() {
+
+		var (
+			ads []*arith.ADSecret
+			egf *commitment.ElGamalFactory
+		)
+
+		Context("Two parties", func() {
+
+			BeforeEach(func() {
+				nProc = 2
+				ads = make([]*arith.ADSecret, nProc)
+				egsk := group.ScalarBaseMult(big.NewInt(rand.Int63()))
+				egf = commitment.NewElGamalFactory(egsk)
+			})
 
 			Context("Alice and Bob are honest and alive", func() {
 
-				BeforeEach(func() {
-					ads = make([]*arith.ADSecret, nProc)
-					errors = make([]error, nProc)
-					egsk := group.ScalarBaseMult(big.NewInt(rand.Int63()))
-					egf = commitment.NewElGamalFactory(egsk)
-				})
-
 				It("Should finish for alice and bob", func() {
-					gen(ads, label, egf)
+					genSecret(ads, label, egf)
 				})
 			})
 		})
 
-		Describe("Generating distributed public keys with arith.GenExpReveal", func() {
-			var (
-				dks []*arith.DKey
-			)
+		Context("Ten parties", func() {
+
+			BeforeEach(func() {
+				nProc = 10
+				ads = make([]*arith.ADSecret, nProc)
+				egsk := group.ScalarBaseMult(big.NewInt(rand.Int63()))
+				egf = commitment.NewElGamalFactory(egsk)
+			})
+
+			Context("All parties are honest and alive", func() {
+
+				It("Should finish for all parties", func() {
+					genSecret(ads, label, egf)
+				})
+			})
+		})
+	})
+
+	Describe("Generating distributed public keys with arith.GenExpReveal", func() {
+
+		var (
+			dks []*arith.DKey
+		)
+
+		Context("Two parties", func() {
+
+			BeforeEach(func() {
+				nProc = 2
+				dks = make([]*arith.DKey, nProc)
+			})
 
 			Context("Alice and Bob are honest and alive", func() {
 
-				BeforeEach(func() {
-					dks = make([]*arith.DKey, nProc)
-					errors = make([]error, nProc)
-				})
-
 				It("Should finish for alice and bob", func() {
-					wg.Add(int(nProc))
-					go func() {
-						defer wg.Done()
-						dks[alice], errors[alice] = arith.GenExpReveal(label, syncservs[alice], nProc, group)
-					}()
-					go func() {
-						defer wg.Done()
-						dks[bob], errors[bob] = arith.GenExpReveal(label, syncservs[bob], nProc, group)
-					}()
-					wg.Wait()
-
-					Expect(errors[alice]).NotTo(HaveOccurred())
-					Expect(errors[bob]).NotTo(HaveOccurred())
-
+					genKey(dks)
 				})
 			})
 		})
 
-		Describe("Resharing arithmetic distributed secrets", func() {
+		Context("Ten parties", func() {
 
-			var (
-				t   uint16
-				ads []*arith.ADSecret
-				tds []*arith.TDSecret
-				egf *commitment.ElGamalFactory
-			)
+			BeforeEach(func() {
+				nProc = 10
+				dks = make([]*arith.DKey, nProc)
+			})
+
+			Context("All parties are honest and alive", func() {
+
+				It("Should finish for all parties", func() {
+					genKey(dks)
+				})
+			})
+		})
+	})
+
+	Describe("Resharing arithmetic distributed secrets", func() {
+
+		var (
+			t   uint16
+			ads []*arith.ADSecret
+			tds []*arith.TDSecret
+			egf *commitment.ElGamalFactory
+		)
+
+		Context("Two parties", func() {
+
+			BeforeEach(func() {
+				nProc = 2
+				ads = make([]*arith.ADSecret, nProc)
+				tds = make([]*arith.TDSecret, nProc)
+				egsk := group.ScalarBaseMult(big.NewInt(rand.Int63()))
+				egf = commitment.NewElGamalFactory(egsk)
+			})
 
 			Context("Alice and Bob are honest and alive", func() {
-
-				BeforeEach(func() {
-					ads = make([]*arith.ADSecret, nProc)
-					tds = make([]*arith.TDSecret, nProc)
-					errors = make([]error, nProc)
-					egsk := group.ScalarBaseMult(big.NewInt(rand.Int63()))
-					egf = commitment.NewElGamalFactory(egsk)
-				})
 
 				Context("Threshold equals 1", func() {
+
 					BeforeEach(func() {
 						t = 1
 					})
+
 					It("Should finish for alice and bob", func() {
-						gen(ads, label, egf)
-
-						wg.Add(int(nProc))
-						go func() {
-							defer wg.Done()
-							tds[alice], errors[alice] = ads[alice].Reshare(t)
-						}()
-						go func() {
-							defer wg.Done()
-							tds[bob], errors[bob] = ads[bob].Reshare(t)
-						}()
-						wg.Wait()
-
-						Expect(errors[alice]).NotTo(HaveOccurred())
-						Expect(errors[bob]).NotTo(HaveOccurred())
-						Expect(tds[alice]).NotTo(BeNil())
-						Expect(tds[bob]).NotTo(BeNil())
+						genSecret(ads, label, egf)
+						reshare(ads, tds, t)
 					})
 				})
 
 				Context("Threshold equals 2", func() {
+
 					BeforeEach(func() {
 						t = 2
 					})
+
 					It("Should finish for alice and bob", func() {
-						gen(ads, label, egf)
-
-						Expect(errors[alice]).NotTo(HaveOccurred())
-						Expect(errors[bob]).NotTo(HaveOccurred())
-						Expect(ads[alice]).NotTo(BeNil())
-						Expect(ads[bob]).NotTo(BeNil())
-
-						wg.Add(int(nProc))
-						go func() {
-							defer wg.Done()
-							tds[alice], errors[alice] = ads[alice].Reshare(t)
-						}()
-						go func() {
-							defer wg.Done()
-							tds[bob], errors[bob] = ads[bob].Reshare(t)
-						}()
-						wg.Wait()
-
-						Expect(errors[alice]).NotTo(HaveOccurred())
-						Expect(errors[bob]).NotTo(HaveOccurred())
-						Expect(tds[alice]).NotTo(BeNil())
-						Expect(tds[bob]).NotTo(BeNil())
+						genSecret(ads, label, egf)
+						reshare(ads, tds, t)
 					})
 				})
 			})
-
 		})
 
-		Describe("Multiplying two secrets with arith.Mul", func() {
+		Context("Ten parties", func() {
 
-			var (
-				a, b, c    []*arith.ADSecret
-				al, bl, cl string
-				egf        *commitment.ElGamalFactory
-				privs      []*paillier.PrivateKey
-				pubs       []*paillier.PublicKey
-				err        error
-			)
+			BeforeEach(func() {
+				nProc = 10
+				ads = make([]*arith.ADSecret, nProc)
+				tds = make([]*arith.TDSecret, nProc)
+				egsk := group.ScalarBaseMult(big.NewInt(rand.Int63()))
+				egf = commitment.NewElGamalFactory(egsk)
+			})
+
+			Context("All parties are honest and alive", func() {
+
+				Context("Threshold equals 1", func() {
+
+					BeforeEach(func() {
+						t = 1
+					})
+
+					It("Should finish for all parties", func() {
+						genSecret(ads, label, egf)
+						reshare(ads, tds, t)
+					})
+				})
+
+				Context("Threshold equals 2", func() {
+
+					BeforeEach(func() {
+						t = 2
+					})
+
+					It("Should finish for all parties", func() {
+						genSecret(ads, label, egf)
+						reshare(ads, tds, t)
+					})
+				})
+			})
+		})
+	})
+
+	Describe("Transforming distributed secret into distributed key with arith.TDSecret.Exp", func() {
+
+		var (
+			t    uint16
+			ads  []*arith.ADSecret
+			tds  []*arith.TDSecret
+			tdks []*arith.TDKey
+			egf  *commitment.ElGamalFactory
+		)
+
+		Context("Two parties", func() {
+
+			BeforeEach(func() {
+				nProc = 2
+				ads = make([]*arith.ADSecret, nProc)
+				tds = make([]*arith.TDSecret, nProc)
+				tdks = make([]*arith.TDKey, nProc)
+				egsk := group.ScalarBaseMult(big.NewInt(rand.Int63()))
+				egf = commitment.NewElGamalFactory(egsk)
+			})
 
 			Context("Alice and Bob are honest and alive", func() {
 
-				BeforeEach(func() {
-					a = make([]*arith.ADSecret, nProc)
-					b = make([]*arith.ADSecret, nProc)
-					c = make([]*arith.ADSecret, nProc)
-					al = "a"
-					bl = "b"
-					cl = "c"
-					privs = make([]*paillier.PrivateKey, nProc)
-					pubs = make([]*paillier.PublicKey, nProc)
+				Context("Threshold equals 1", func() {
 
-					errors = make([]error, nProc)
-					egsk := group.ScalarBaseMult(big.NewInt(rand.Int63()))
-					egf = commitment.NewElGamalFactory(egsk)
+					BeforeEach(func() {
+						t = 1
+					})
+
+					It("Should finish for alice and bob", func() {
+						genSecret(ads, label, egf)
+						reshare(ads, tds, t)
+						exp(tds, tdks)
+					})
 				})
 
-				It("Should finish for alice and bob", func() {
-					gen(a, al, egf)
-					gen(b, bl, egf)
-					bitLen := 264
-					timeout := 1 * time.Second
-					privs[alice], pubs[alice], err = paillier.GenerateKeyPair(bitLen, timeout)
-					Expect(err).NotTo(HaveOccurred())
-					privs[bob], pubs[bob], err = paillier.GenerateKeyPair(bitLen, timeout)
-					Expect(err).NotTo(HaveOccurred())
-					wg.Add(int(nProc))
-					go func() {
-						defer wg.Done()
-						c[alice], errors[alice] = arith.Mult(a[alice], b[alice], cl, privs[alice], pubs[alice], pubs)
-					}()
-					go func() {
-						defer wg.Done()
-						c[bob], errors[bob] = arith.Mult(a[bob], b[bob], cl, privs[bob], pubs[bob], pubs)
-					}()
-					wg.Wait()
+				Context("Threshold equals 2", func() {
 
-					Expect(errors[alice]).NotTo(HaveOccurred())
-					Expect(errors[bob]).NotTo(HaveOccurred())
+					BeforeEach(func() {
+						t = 2
+					})
+
+					It("Should finish for alice and bob", func() {
+						genSecret(ads, label, egf)
+						reshare(ads, tds, t)
+						exp(tds, tdks)
+					})
+				})
+			})
+		})
+
+		Context("Ten parties", func() {
+
+			BeforeEach(func() {
+				nProc = 10
+				ads = make([]*arith.ADSecret, nProc)
+				tds = make([]*arith.TDSecret, nProc)
+				tdks = make([]*arith.TDKey, nProc)
+				egsk := group.ScalarBaseMult(big.NewInt(rand.Int63()))
+				egf = commitment.NewElGamalFactory(egsk)
+			})
+
+			Context("All parties are honest and alive", func() {
+
+				Context("Threshold equals 1", func() {
+
+					BeforeEach(func() {
+						t = 1
+					})
+
+					It("Should finish for all parties", func() {
+						genSecret(ads, label, egf)
+						reshare(ads, tds, t)
+						exp(tds, tdks)
+					})
+				})
+
+				Context("Threshold equals 2", func() {
+
+					BeforeEach(func() {
+						t = 2
+					})
+
+					It("Should finish for all parties", func() {
+						genSecret(ads, label, egf)
+						reshare(ads, tds, t)
+						exp(tds, tdks)
+					})
+				})
+			})
+		})
+	})
+
+	Describe("Multiplying two secrets with arith.Mul", func() {
+
+		var (
+			a          []*arith.ADSecret
+			b          []*arith.ADSecret
+			c          []*arith.ADSecret
+			al, bl, cl string
+			egf        *commitment.ElGamalFactory
+		)
+
+		JustBeforeEach(func() {
+			a = make([]*arith.ADSecret, nProc)
+			b = make([]*arith.ADSecret, nProc)
+			c = make([]*arith.ADSecret, nProc)
+			al = "a"
+			bl = "b"
+			cl = "c"
+
+			egsk := group.ScalarBaseMult(big.NewInt(rand.Int63()))
+			egf = commitment.NewElGamalFactory(egsk)
+		})
+
+		Context("Two parties", func() {
+
+			BeforeEach(func() {
+				nProc = 2
+			})
+			Context("Alice and Bob are honest and alive", func() {
+
+				It("Should finish for alice and bob", func() {
+					wgm := stdsync.WaitGroup{}
+
+					wgm.Add(2)
+					go func() {
+						defer wgm.Done()
+						genSecret(a, al, egf)
+					}()
+					go func() {
+						defer wgm.Done()
+						genSecret(b, bl, egf)
+					}()
+					wgm.Wait()
+					mult(a, b, c, cl)
+				})
+			})
+		})
+
+		Context("Ten parties", func() {
+
+			BeforeEach(func() {
+				nProc = 10
+			})
+			Context("All parties are honest and alive", func() {
+
+				It("Should finish for all parties", func() {
+					wgm := stdsync.WaitGroup{}
+
+					wgm.Add(2)
+					go func() {
+						defer wgm.Done()
+						genSecret(a, al, egf)
+					}()
+					go func() {
+						defer wgm.Done()
+						genSecret(b, bl, egf)
+					}()
+					wgm.Wait()
+					mult(a, b, c, cl)
 				})
 			})
 		})

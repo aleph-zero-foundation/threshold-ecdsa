@@ -260,7 +260,7 @@ func main() {
 
 	var proto *tecdsa.Protocol
 	bench(logFile, "tecdsa.Init", func() {
-		proto, err = tecdsa.Init(nProc, server)
+		proto, err = tecdsa.Init(uint16(member.pid), nProc, server)
 		if err != nil {
 			fmt.Fprintf(logFile, "error during tecdsa initialization: %v\n.", err)
 			os.Exit(1)
