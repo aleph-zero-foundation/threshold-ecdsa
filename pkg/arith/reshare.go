@@ -294,13 +294,13 @@ func (ads *ADSecret) Reshare(t uint16) (*TDSecret, error) {
 	if shareRandRefresh, err = rand.Int(randReader, Q); err != nil {
 		return nil, err
 	}
-	shareComm := ads.egf.Create(share, shareRandRefresh)
+	shareComms[ads.pid] = ads.egf.Create(share, shareRandRefresh)
 	// TODO: ...
 	egrefresh = zkpok.NoopZKproof{}
 	if err := egrefresh.Encode(toSendBuf); err != nil {
 		return nil, err
 	}
-	if err := shareComm.Encode(toSendBuf); err != nil {
+	if err := shareComms[ads.pid].Encode(toSendBuf); err != nil {
 		return nil, err
 	}
 
@@ -328,7 +328,6 @@ func (ads *ADSecret) Reshare(t uint16) (*TDSecret, error) {
 	tds := &TDSecret{*ads, t}
 	ads.skShare = share
 	ads.r = shareRandRefresh
-	ads.eg = shareComm
 	ads.egs = shareComms
 
 	return tds, nil

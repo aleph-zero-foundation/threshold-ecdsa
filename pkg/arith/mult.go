@@ -22,15 +22,10 @@ func Mult(a, b *ADSecret, cLabel string, priv *paillier.PrivateKey, pub *paillie
 	c.server = a.server
 
 	// Step 1. Compute a product of commitments to b
-	pid := -1
+	pid := int(a.pid)
 	bProd := b.egf.Neutral()
-	for id, eg := range b.egs {
-		if eg == nil {
-			pid = id
-			bProd.Compose(bProd, b.eg)
-		} else {
-			bProd.Compose(bProd, eg)
-		}
+	for _, eg := range b.egs {
+		bProd.Compose(bProd, eg)
 	}
 
 	// Step 2. Run priv mult and compute the share of c
@@ -39,10 +34,11 @@ func Mult(a, b *ADSecret, cLabel string, priv *paillier.PrivateKey, pub *paillie
 	}
 
 	// Step 3. Compute and publish an ElGamal commitment to the share of c
+	c.egs = make([]*commitment.ElGamal, nProc)
 	if c.r, err = rand.Int(randReader, Q); err != nil {
 		return nil, err
 	}
-	c.eg = a.egf.Create(c.skShare, c.r)
+	c.egs[a.pid] = a.egf.Create(c.skShare, c.r)
 
 	toSendBuf := &bytes.Buffer{}
 	// TODO: replace the following commitment and check with EGKnow
@@ -50,11 +46,10 @@ func Mult(a, b *ADSecret, cLabel string, priv *paillier.PrivateKey, pub *paillie
 	if err := egknow.Encode(toSendBuf); err != nil {
 		return nil, err
 	}
-	if err := c.eg.Encode(toSendBuf); err != nil {
+	if err := c.egs[a.pid].Encode(toSendBuf); err != nil {
 		return nil, err
 	}
 
-	c.egs = make([]*commitment.ElGamal, nProc)
 	check := func(pid uint16, data []byte) error {
 		var egknow zkpok.NoopZKproof
 		buf := bytes.NewBuffer(data)
@@ -133,11 +128,7 @@ func Mult(a, b *ADSecret, cLabel string, priv *paillier.PrivateKey, pub *paillie
 
 	cEG := b.egf.Neutral()
 	for _, eg := range c.egs {
-		if eg == nil {
-			cEG.Compose(cEG, c.eg)
-		} else {
-			cEG.Compose(cEG, eg)
-		}
+		cEG.Compose(cEG, eg)
 	}
 
 	// Step 6. Run the CheckDH procedure on E(ab)/E(c)

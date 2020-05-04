@@ -15,14 +15,16 @@ import (
 
 // DSecret is a distributed secret
 type DSecret struct {
+	pid     uint16
 	label   string
 	skShare *big.Int
 	server  sync.Server
 }
 
 // NewDSecret returns a pointer to new DSecret instance
-func NewDSecret(label string, skShare *big.Int, server sync.Server) *DSecret {
+func NewDSecret(pid uint16, label string, skShare *big.Int, server sync.Server) *DSecret {
 	return &DSecret{
+		pid:     pid,
 		label:   label,
 		skShare: skShare,
 		server:  server,
@@ -39,7 +41,6 @@ type ADSecret struct {
 	DSecret
 	r   *big.Int
 	egf *commitment.ElGamalFactory
-	eg  *commitment.ElGamal
 	egs []*commitment.ElGamal
 }
 
@@ -55,6 +56,7 @@ func (tds *TDSecret) Reveal() (*big.Int, error) {
 	toSend := [][]byte{tds.skShare.Bytes()}
 
 	secrets := make([]*big.Int, len(tds.egs))
+	secrets[tds.pid] = tds.skShare
 
 	check := func(pid uint16, data []byte) error {
 		// TODO: check zkpok
@@ -71,9 +73,7 @@ func (tds *TDSecret) Reveal() (*big.Int, error) {
 
 	sum := big.NewInt(0)
 	for _, secret := range secrets {
-		if secret == nil {
-			sum.Add(sum, tds.skShare)
-		} else {
+		if secret != nil {
 			sum.Add(sum, secret)
 		}
 	}
@@ -82,20 +82,20 @@ func (tds *TDSecret) Reveal() (*big.Int, error) {
 }
 
 // Exp computes a common public key and its share related to this secret
-func (tds *TDSecret) Exp(pid uint16) (*TDKey, error) {
+func (tds *TDSecret) Exp() (*TDKey, error) {
 	// TODO: keep it somewhere
 	group := curve.NewSecp256k1Group()
+	pid := tds.pid
 	tdk := &TDKey{}
 	tdk.secret = tds
-	tdk.pkShare = group.ScalarBaseMult(tds.skShare)
+	tdk.pkShares = make([]curve.Point, len(tds.egs))
+	tdk.pkShares[pid] = group.ScalarBaseMult(tds.skShare)
 
 	// TODO: add EGRefresh
 	toSendBuf := &bytes.Buffer{}
-	if err := group.Encode(tdk.pkShare, toSendBuf); err != nil {
+	if err := group.Encode(tdk.pkShares[pid], toSendBuf); err != nil {
 		return nil, fmt.Errorf("Encoding tkd.pkShare in Exp: %v", err)
 	}
-
-	tdk.pkShares = make([]curve.Point, len(tds.egs))
 
 	check := func(pid uint16, data []byte) error {
 		// TODO: check zkpok
@@ -158,13 +158,6 @@ func (tds *TDSecret) Exp(pid uint16) (*TDKey, error) {
 				channel <- lagrangeElement(i, value, group, uint16(nProc))
 			}(i, value)
 			counter = counter - 1
-		} else if i == int(pid) {
-			wg.Add(1)
-			go func(i int) {
-				defer wg.Done()
-				channel <- lagrangeElement(i, tdk.pkShare, group, uint16(nProc))
-			}(i)
-			counter = counter - 1
 		}
 		if counter == 0 {
 			break
@@ -193,10 +186,10 @@ func (tds TDSecret) Threshold() uint16 {
 }
 
 // Gen generates a new distributed key with given label
-func Gen(label string, server sync.Server, egf *commitment.ElGamalFactory, nProc uint16) (*ADSecret, error) {
+func Gen(label string, server sync.Server, egf *commitment.ElGamalFactory, pid, nProc uint16) (*ADSecret, error) {
 	var err error
 	// create a secret
-	ads := &ADSecret{DSecret: DSecret{label: label, server: server}, egf: egf}
+	ads := &ADSecret{DSecret: DSecret{pid: pid, label: label, server: server}, egf: egf}
 	if ads.skShare, err = rand.Int(randReader, Q); err != nil {
 		return nil, err
 	}
@@ -205,12 +198,13 @@ func Gen(label string, server sync.Server, egf *commitment.ElGamalFactory, nProc
 	}
 
 	// create a commitment and a zkpok
-	ads.eg = egf.Create(ads.skShare, ads.r)
+	ads.egs = make([]*commitment.ElGamal, nProc)
+	ads.egs[ads.pid] = egf.Create(ads.skShare, ads.r)
 	// TODO: replace with a proper zkpok when it's ready
 	zkp := zkpok.NoopZKproof{}
 
 	toSendBuf := &bytes.Buffer{}
-	if err := ads.eg.Encode(toSendBuf); err != nil {
+	if err := ads.egs[ads.pid].Encode(toSendBuf); err != nil {
 		return nil, err
 	}
 	if err := zkp.Encode(toSendBuf); err != nil {
@@ -218,7 +212,6 @@ func Gen(label string, server sync.Server, egf *commitment.ElGamalFactory, nProc
 	}
 
 	// TODO: reimplement after ZKPs are implemented
-	ads.egs = make([]*commitment.ElGamal, nProc)
 	check := func(pid uint16, data []byte) error {
 		var (
 			eg  commitment.ElGamal
@@ -271,8 +264,8 @@ func Lin(alpha, beta *big.Int, a, b *TDSecret, cLabel string) *TDSecret {
 		return result
 	}
 
-	tds.eg = makeEGLin(a.eg, b.eg)
 	tds.egs = make([]*commitment.ElGamal, len(a.egs))
+	tds.egs[a.pid] = makeEGLin(a.egs[a.pid], b.egs[b.pid])
 	for pid, eg := range a.egs {
 		if eg != nil {
 			tds.egs[pid] = makeEGLin(a.egs[pid], b.egs[pid])

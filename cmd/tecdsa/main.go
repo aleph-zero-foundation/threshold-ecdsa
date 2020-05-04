@@ -260,7 +260,7 @@ func main() {
 
 	var proto *tecdsa.Protocol
 	bench(logFile, "tecdsa.Init", func() {
-		proto, err = tecdsa.Init(nProc, server)
+		proto, err = tecdsa.Init(uint16(member.pid), nProc, server)
 		if err != nil {
 			fmt.Fprintf(logFile, "error during tecdsa initialization: %v\n.", err)
 			os.Exit(1)
@@ -280,7 +280,7 @@ func main() {
 	for i := 0; i < options.sigNumber; i++ {
 		logMsg := fmt.Sprintf("Signing; round %d", i)
 		bench(logFile, logMsg, func() {
-			if _, err := proto.Sign(big.NewInt(int64(i)), uint16(member.pid)); err != nil {
+			if _, err := proto.Sign(big.NewInt(int64(i))); err != nil {
 				fmt.Fprintf(logFile, "error during signing: %v\n.", err)
 				return
 			}

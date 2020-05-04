@@ -63,11 +63,11 @@ var _ = Describe("Secret Test", func() {
 			wg.Add(int(nProc))
 			go func() {
 				defer wg.Done()
-				ads[alice], errors[alice] = arith.Gen(label, syncservs[alice], egf, nProc)
+				ads[alice], errors[alice] = arith.Gen(label, syncservs[alice], egf, alice, nProc)
 			}()
 			go func() {
 				defer wg.Done()
-				ads[bob], errors[bob] = arith.Gen(label, syncservs[bob], egf, nProc)
+				ads[bob], errors[bob] = arith.Gen(label, syncservs[bob], egf, bob, nProc)
 			}()
 			wg.Wait()
 
@@ -122,11 +122,11 @@ var _ = Describe("Secret Test", func() {
 					wg.Add(int(nProc))
 					go func() {
 						defer wg.Done()
-						dks[alice], errors[alice] = arith.GenExpReveal(label, syncservs[alice], nProc, group)
+						dks[alice], errors[alice] = arith.GenExpReveal(alice, label, syncservs[alice], nProc, group)
 					}()
 					go func() {
 						defer wg.Done()
-						dks[bob], errors[bob] = arith.GenExpReveal(label, syncservs[bob], nProc, group)
+						dks[bob], errors[bob] = arith.GenExpReveal(bob, label, syncservs[bob], nProc, group)
 					}()
 					wg.Wait()
 
