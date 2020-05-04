@@ -1,0 +1,18 @@
+panic: runtime error: slice bounds out of range [:536870916] with capacity 1526
+
+goroutine 1 [running]:
+gitlab.com/alephledger/threshold-ecdsa/pkg/arith.(*ADSecret).Reshare.func6(0xc000010006, 0xc0003fe60a, 0x90, 0x5f6, 0x0, 0x0)
+        /home/ubuntu/go/src/gitlab.com/alephledger/threshold-ecdsa/pkg/arith/reshare.go:255 +0x366
+gitlab.com/alephledger/threshold-ecdsa/pkg/sync.(*server).Round(0xc00005c230, 0xc000418300, 0x8, 0x8, 0xc000051100, 0x20, 0x0)
+        /home/ubuntu/go/src/gitlab.com/alephledger/threshold-ecdsa/pkg/sync/server.go:88 +0x357
+gitlab.com/alephledger/threshold-ecdsa/pkg/arith.(*ADSecret).Reshare(0xc0000eeea0, 0xc000470001, 0xc0000ee5a0, 0x0, 0x0)
+        /home/ubuntu/go/src/gitlab.com/alephledger/threshold-ecdsa/pkg/arith/reshare.go:261 +0x14c9
+gitlab.com/alephledger/threshold-ecdsa/pkg/tecdsa.(*Protocol).Presign(0xc0000528a0, 0xc000090001, 0x4e42d1, 0xc000093c60)
+        /home/ubuntu/go/src/gitlab.com/alephledger/threshold-ecdsa/pkg/tecdsa/tecdsa.go:76 +0x226
+main.main.func3()
+        /home/ubuntu/go/src/gitlab.com/alephledger/threshold-ecdsa/cmd/tecdsa/main.go:278 +0x50
+main.bench(0xa193e0, 0xc000010080, 0xc000016ae0, 0x22, 0xc000093da0, 0xc000093ec8)
+        /home/ubuntu/go/src/gitlab.com/alephledger/threshold-ecdsa/cmd/tecdsa/main.go:194 +0x61
+main.main()
+        /home/ubuntu/go/src/gitlab.com/alephledger/threshold-ecdsa/cmd/tecdsa/main.go:277 +0xa48
+

@@ -202,7 +202,7 @@ func bench(w io.Writer, name string, totalTime *int64, job func()) {
 
 func main() {
 	// temporary trick to capture stdout and stderr on remote instances
-	logFile, _ := os.OpenFile("aleph.log", os.O_WRONLY|os.O_CREATE|os.O_SYNC, 0644)
+	logFile, _ := os.OpenFile("aleph.log", os.O_WRONLY|os.O_CREATE|os.O_SYNC|os.O_APPEND, 0644)
 	syscall.Dup2(int(logFile.Fd()), 1)
 	syscall.Dup2(int(logFile.Fd()), 2)
 	go func() {

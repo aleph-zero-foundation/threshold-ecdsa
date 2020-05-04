@@ -151,3 +151,15 @@ def get_log(conn, pid):
         conn.run(f'cp aleph.log {pid}.log')
         conn.run(f'zip -q {pid}.log.zip {pid}.log')
     conn.get(f'{repo_path}/{pid}.log.zip', f'../results/{pid}.log.zip')
+
+@task
+def get_out(conn, pid):
+    ''' Retrieves aleph stdout from the server.'''
+
+    repo_path = '/home/ubuntu/go/src/gitlab.com/alephledger/consensus-go'
+    with conn.cd(repo_path):
+        conn.run(f'cp out {pid}.out')
+        conn.run(f'zip -q {pid}.out.zip {pid}.out')
+    conn.get(f'{repo_path}/{pid}.out.zip', f'../results/{pid}.out.zip')
+
+

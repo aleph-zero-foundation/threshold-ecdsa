@@ -562,9 +562,6 @@ def get_logs(regions, pids, ip2pid, name, logs_per_region=1, with_out=False, wit
 
     color_print(f'{len(os.listdir("../results"))} files in ../results')
 
-    with open('data/config.json') as f:
-        config = json.loads(''.join(f.readlines()))
-
     n_processes = len(ip2pid)
 
     result_path = f'{name}'
