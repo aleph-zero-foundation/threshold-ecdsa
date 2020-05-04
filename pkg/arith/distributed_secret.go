@@ -146,12 +146,10 @@ func (tds *TDSecret) Exp() (*TDKey, error) {
 		close(channel)
 	}()
 
-	publicKey := group.Neutral()
+	tdk.pk = group.Neutral()
 	for elem := range channel {
-		publicKey = group.Add(publicKey, elem)
+		tdk.pk = group.Add(tdk.pk, elem)
 	}
-
-	tdk.pk = publicKey
 
 	return tdk, nil
 }
