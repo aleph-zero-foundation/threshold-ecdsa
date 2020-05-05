@@ -4,6 +4,8 @@ package sync
 import (
 	"encoding/binary"
 	"fmt"
+
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -180,8 +182,8 @@ func (s *server) Round(toSend [][]byte, check func(uint16, []byte) error) error 
 
 	// TODO: better timeout handling
 	d := time.Until(endRound)
-	if d < 0 {
-		return wrap(fmt.Errorf("rid:%v: Round: receiving took too long %v", s.roundID, d))
+	if d > time.Second {
+		fmt.Fprintf(os.Stderr, "rid:%v: Round: receiving took too long %v\n", s.roundID, d)
 	}
 
 	return nil
@@ -218,6 +220,11 @@ func (s *server) sendToAll(toSend [][]byte) error {
 			dataLen := make([]byte, 8)
 			binary.LittleEndian.PutUint64(dataLen, uint64(len(d)))
 			_, err := conn.Write(dataLen)
+			if err != nil {
+				errors[pid] = err
+				return
+			}
+			err = conn.Flush()
 			if err != nil {
 				errors[pid] = err
 				return
@@ -269,14 +276,24 @@ func (s *server) receiveFromAll(endRound time.Time) ([][]byte, []uint16, error) 
 			defer wg.Done()
 
 			dataLen := make([]byte, 8)
-			if _, err := s.inDataConn[pid].Read(dataLen); err != nil {
-				errors[pid] = fmt.Errorf("receiveFromAll dataLen err: %v", err)
+			if n, err := s.inDataConn[pid].Read(dataLen); err != nil {
+				errors[pid] = fmt.Errorf("receiveFromAll dataLen err: %v, %v", n, err)
 				return
 			}
-			buf := make([]byte, binary.LittleEndian.Uint64(dataLen))
-			if _, err := s.inDataConn[pid].Read(buf); err != nil {
-				errors[pid] = fmt.Errorf("receiveFromAll buf err: %v", err)
-				return
+			l := int(binary.LittleEndian.Uint64(dataLen))
+			buf := make([]byte, l)
+			nRead := 0
+			for {
+				n, err := s.inDataConn[pid].Read(buf[nRead:])
+				if err != nil {
+					errors[pid] = fmt.Errorf("receiveFromAll buf err: %v", err)
+					return
+				}
+				nRead += n
+				if nRead == l {
+					break
+				}
+
 			}
 
 			if len(buf) < 10 {
@@ -301,8 +318,8 @@ func (s *server) receiveFromAll(endRound time.Time) ([][]byte, []uint16, error) 
 
 	// TODO: better timeout handling
 	d := time.Until(endRound)
-	if d < 0 {
-		return nil, nil, fmt.Errorf("rid:%v: receiveFromAll: receiving took to long %v", s.roundID, d)
+	if d > time.Second {
+		fmt.Fprintf(os.Stderr, "rid:%v: Round: receiving took too long %v\n", s.roundID, d)
 	}
 
 	var b strings.Builder

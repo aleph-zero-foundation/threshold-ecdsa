@@ -284,7 +284,6 @@ func main() {
 		})
 	}
 	tot, ave := time.Duration(totalTime), time.Duration(totalTime/int64(options.sigNumber))
-	fmt.Fprintf(logFile, "Presignature stats: total = %v, average = %v\n", tot, ave)
 
 	totalTime = int64(0)
 	for i := 0; i < options.sigNumber; i++ {
@@ -297,6 +296,7 @@ func main() {
 		})
 	}
 
+	fmt.Fprintf(logFile, "Presignature stats: total = %v, average = %v\n", tot, ave)
 	tot, ave = time.Duration(totalTime), time.Duration(totalTime/int64(options.sigNumber))
 	fmt.Fprintf(logFile, "Signing stats: total = %v, average = %v\n", tot, ave)
 
