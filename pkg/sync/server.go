@@ -46,7 +46,6 @@ func NewServer(pid, nProc uint16, startTime time.Time, roundDuration time.Durati
 }
 
 func (s *server) Start() {
-	fmt.Println("TODO: more logging in send/recv")
 	s.startWG.Add(2*int(s.nProc) - 2)
 	go func() {
 		timeout := 100 * time.Millisecond
@@ -89,12 +88,15 @@ func (s *server) Start() {
 				for {
 					conn, err := s.net.Dial(pid, timeout)
 					if err != nil {
-						return
+						continue
 					}
 					buf := make([]byte, 2)
 					binary.LittleEndian.PutUint16(buf, s.pid)
 					if _, err = conn.Write(buf); err != nil {
 						panic(fmt.Sprintf("succesfully dialed %v but then %v", pid, err))
+					}
+					if err = conn.Flush(); err != nil {
+						panic(fmt.Sprintf("succesfully written %v but then %v", pid, err))
 					}
 					s.outDataConn[pid] = conn
 					return
