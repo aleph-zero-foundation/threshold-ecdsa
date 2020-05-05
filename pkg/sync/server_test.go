@@ -36,7 +36,7 @@ var _ = Describe("Sync Server", func() {
 		wg = stdsync.WaitGroup{}
 		netservs = tests.NewNetwork(int(nProc))
 		syncservs = make([]sync.Server, int(nProc))
-		start = time.Now().Add(10 * time.Millisecond)
+		start = time.Now().Add(50 * time.Millisecond)
 		for i := uint16(0); i < nProc; i++ {
 			syncservs[i] = sync.NewServer(i, nProc, start, roundTime, netservs[i])
 			syncservs[i].Start()
