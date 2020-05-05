@@ -2,7 +2,6 @@
 package sync
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"strings"
@@ -20,82 +19,104 @@ type Server interface {
 }
 
 type server struct {
-	pid, nProc    uint16
-	startTime     time.Time
-	roundDuration time.Duration
-	roundID       int64
-	net           network.Server
-	dataChan      []chan ([]byte)
-	mx            sync.RWMutex
-	quit          bool
-	prevRoundEnd  time.Time
+	pid, nProc              uint16
+	startTime               time.Time
+	roundDuration           time.Duration
+	roundID                 int64
+	net                     network.Server
+	inDataConn, outDataConn []network.Connection
+	prevRoundEnd            time.Time
+	startWG                 sync.WaitGroup
 }
 
 // NewServer construcs a SyncServer object
 func NewServer(pid, nProc uint16, startTime time.Time, roundDuration time.Duration, net network.Server) Server {
-	chans := make([]chan []byte, nProc)
-	for i := range chans {
-		// TODO: to bu or not to bu
-		chans[i] = make(chan []byte, 2)
-	}
-	return &server{
+	s := &server{
 		pid:           pid,
 		nProc:         nProc,
 		startTime:     startTime,
 		roundDuration: roundDuration,
 		roundID:       -1,
 		net:           net,
-		dataChan:      chans,
 	}
+	s.inDataConn = make([]network.Connection, nProc)
+	s.outDataConn = make([]network.Connection, nProc)
+
+	return s
 }
 
 func (s *server) Start() {
-	for range s.dataChan {
-		go func() {
-			for {
-				s.mx.RLock()
-				if s.quit {
-					s.mx.RUnlock()
+	fmt.Println("TODO: more logging in send/recv")
+	s.startWG.Add(2*int(s.nProc) - 2)
+	go func() {
+		timeout := 100 * time.Millisecond
+		for pid := range s.inDataConn {
+			if pid == int(s.pid) {
+				continue
+			}
+			go func() {
+				defer s.startWG.Done()
+				for {
+					conn, err := s.net.Listen(timeout)
+					if err != nil {
+						continue
+					}
+
+					buf := make([]byte, 2)
+					_, err = conn.Read(buf)
+					if err != nil {
+						panic(err.Error())
+					}
+
+					pid := binary.LittleEndian.Uint16(buf)
+					if s.inDataConn[pid] != nil {
+						panic(fmt.Sprintf("Connection with %d already established (my pid:%v)!", pid, s.pid))
+					}
+					s.inDataConn[pid] = conn
 					return
 				}
-				conn, err := s.net.Listen(10 * time.Millisecond)
-				if err != nil {
-					s.mx.RUnlock()
-					continue
-				}
+			}()
+		}
 
-				defer conn.Close()
-				conn.TimeoutAfter(s.roundDuration)
-				buf := bytes.Buffer{}
-				_, err = buf.ReadFrom(conn)
-				if err != nil {
-					s.mx.RUnlock()
-					panic(err.Error())
-				}
+		for i := range s.outDataConn {
+			pid := uint16(i)
 
-				pid := binary.LittleEndian.Uint16(buf.Bytes()[:2])
-				select {
-				case s.dataChan[pid] <- buf.Bytes()[2:]:
-				default:
-					s.mx.RUnlock()
-					panic("buffer server.dataChan overloaded")
-				}
-				s.mx.RUnlock()
+			if pid == s.pid {
+				continue
 			}
-		}()
-	}
+			go func(pid uint16) {
+				defer s.startWG.Done()
+				for {
+					conn, err := s.net.Dial(pid, timeout)
+					if err != nil {
+						return
+					}
+					buf := make([]byte, 2)
+					binary.LittleEndian.PutUint16(buf, s.pid)
+					if _, err = conn.Write(buf); err != nil {
+						panic(fmt.Sprintf("succesfully dialed %v but then %v", pid, err))
+					}
+					s.outDataConn[pid] = conn
+					return
+				}
+			}(pid)
+		}
+	}()
 }
 
 func (s *server) Stop() {
-	s.mx.Lock()
-	defer s.mx.Unlock()
-	s.quit = true
-	for _, c := range s.dataChan {
-		close(c)
+	s.startWG.Wait()
+	for pid := uint16(0); pid < s.nProc; pid++ {
+		if pid == s.pid {
+			continue
+		}
+		s.inDataConn[pid].Close()
+		s.outDataConn[pid].Close()
 	}
 }
 
 func (s *server) Round(toSend [][]byte, check func(uint16, []byte) error) error {
+	s.startWG.Wait()
 	defer func() { s.prevRoundEnd = time.Now() }()
 
 	s.roundID++
@@ -182,13 +203,6 @@ func (s *server) sendToAll(toSend [][]byte) error {
 		}
 		go func(pid uint16) {
 			defer wg.Done()
-			conn, err := s.net.Dial(pid, s.roundDuration)
-			if err != nil {
-				errors[pid] = err
-				return
-			}
-			defer conn.Close()
-			conn.TimeoutAfter(s.roundDuration)
 			var d []byte
 			if data == nil {
 				d = make([]byte, 10+len(toSend[pid]))
@@ -197,6 +211,14 @@ func (s *server) sendToAll(toSend [][]byte) error {
 				copy(d[10:], toSend[pid])
 			} else {
 				d = data
+			}
+			conn := s.outDataConn[pid]
+			dataLen := make([]byte, 8)
+			binary.LittleEndian.PutUint64(dataLen, uint64(len(d)))
+			_, err := conn.Write(dataLen)
+			if err != nil {
+				errors[pid] = err
+				return
 			}
 			_, err = conn.Write(d)
 			if err != nil {
@@ -237,35 +259,40 @@ func (s *server) receiveFromAll(endRound time.Time) ([][]byte, []uint16, error) 
 	wg := sync.WaitGroup{}
 	wg.Add(int(s.nProc) - 1)
 	errors := make([]error, s.nProc)
-	for i := uint16(0); i < s.nProc; i++ {
-		if i == s.pid {
+	for pid := uint16(0); pid < s.nProc; pid++ {
+		if pid == s.pid {
 			continue
 		}
-		go func(i uint16) {
+		go func(pid uint16) {
 			defer wg.Done()
-			ticker := time.NewTicker(s.roundDuration)
-			defer ticker.Stop()
 
-			var buf []byte
-			select {
-			case <-ticker.C:
-				errors[i] = fmt.Errorf("timeout in roundID:%v for pid:%v", s.roundID, i)
-				return
-			case buf = <-s.dataChan[i]:
-
-			}
-			if len(buf) < 8 {
-				errors[i] = fmt.Errorf("rid:%v: received too short data", s.roundID)
+			dataLen := make([]byte, 8)
+			if _, err := s.inDataConn[pid].Read(dataLen); err != nil {
+				errors[pid] = fmt.Errorf("receiveFromAll dataLen err: %v", err)
 				return
 			}
-			roundID := binary.LittleEndian.Uint64(buf[:8])
+			buf := make([]byte, binary.LittleEndian.Uint64(dataLen))
+			if _, err := s.inDataConn[pid].Read(buf); err != nil {
+				errors[pid] = fmt.Errorf("receiveFromAll buf err: %v", err)
+				return
+			}
+
+			if len(buf) < 10 {
+				errors[pid] = fmt.Errorf("rid:%v: received too short data from %v", s.roundID, pid)
+				return
+			}
+			id := binary.LittleEndian.Uint16(buf[:2])
+			if id != pid {
+				panic(fmt.Sprintf("some party uses wrong outDataConn: Expected %v, got %v", pid, id))
+			}
+			roundID := binary.LittleEndian.Uint64(buf[2:10])
 			if int64(roundID) != s.roundID {
-				errors[i] = fmt.Errorf("received data for wrong round from pid:%v. Expected %d, got %d", i, s.roundID, roundID)
+				errors[pid] = fmt.Errorf("received data for wrong round from pid:%v. Expected %d, got %d", pid, s.roundID, roundID)
 				return
 			}
 
-			data[i] = buf[8:]
-		}(i)
+			data[pid] = buf[10:]
+		}(pid)
 	}
 
 	wg.Wait()

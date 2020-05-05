@@ -219,7 +219,6 @@ func main() {
 		panic("wrote stack, time to panic!")
 	}()
 
-	fmt.Fprintf(logFile, "Starting!\n")
 	options := getOptions()
 
 	member, err := getMember(options.pkPidFilename)
@@ -262,6 +261,7 @@ func main() {
 
 	server := sync.NewServer(uint16(member.pid), nProc, startTime, roundDuration, net)
 	server.Start()
+	fmt.Fprintf(logFile, "Starting!\n")
 
 	var proto *tecdsa.Protocol
 	bench(logFile, "tecdsa.Init", nil, func() {
