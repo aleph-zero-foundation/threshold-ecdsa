@@ -40,6 +40,11 @@ func (e *ElGamalFactory) Create(value, r *big.Int) *ElGamal {
 	}
 }
 
+//Curve returns group used by ElGamalFactory
+func (e *ElGamalFactory) Curve() curve.Group {
+	return e.curve
+}
+
 //Neutral creates neutral element for compose operation of ElGamal Commitments
 func (e *ElGamalFactory) Neutral() *ElGamal {
 	return e.Create(big.NewInt(0), big.NewInt(0))
