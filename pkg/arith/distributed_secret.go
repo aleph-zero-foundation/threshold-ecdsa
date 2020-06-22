@@ -44,23 +44,6 @@ type ADSecret struct {
 	egs []*commitment.ElGamal
 }
 
-//Modify is a debugging tool
-func (ds *DSecret) Modify(s *big.Int) error {
-	ds.skShare = s
-	return nil
-}
-
-//Modify is a debugging tool
-func (tds *ADSecret) Modify(a, b *big.Int) error {
-	tds.r = a
-	tds.DSecret.Modify(b)
-	for i := range tds.egs {
-		tds.egs[i] = tds.egf.Create(b, a)
-	}
-	tds.egs[tds.DSecret.pid] = tds.egf.Create(b, a)
-	return nil
-}
-
 // TDSecret is a thresholded distributed secret
 type TDSecret struct {
 	ADSecret
