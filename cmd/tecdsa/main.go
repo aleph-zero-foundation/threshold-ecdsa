@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/binance-chain/tss-lib/crypto/paillier"
+	"github.com/rs/zerolog"
 
 	"gitlab.com/alephledger/core-go/pkg/network/tcp"
 
@@ -238,7 +239,7 @@ func main() {
 		return
 	}
 
-	net, err := tcp.NewServer(committee.addresses[member.pid], committee.addresses)
+	net, err := tcp.NewServer(committee.addresses[member.pid], committee.addresses, zerolog.Nop())
 	if err != nil {
 		fmt.Fprintf(logFile, "Could not init tcp server due to %v.\n", err)
 		return
