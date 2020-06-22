@@ -291,18 +291,15 @@ func (z *ZKEGRefresh) Decode(r io.Reader) error {
 
 	z1Len := binary.BigEndian.Uint32(lenBytes[:4])
 	z2Len := binary.BigEndian.Uint32(lenBytes[4:8])
-	// fmt.Println(z1Len, z2Len)
 	allBytes := make([]byte, z1Len+z2Len)
 
 	n, err = r.Read(allBytes)
 	if err != nil {
 		return err
 	}
-	// fmt.Println(n)
 	if uint32(n) < z1Len+z2Len {
 		return fmt.Errorf("Too few bytes for payload: expected %d, got %d", z1Len+z2Len, n)
 	}
-	// fmt.Println(z1Len, z2Len, len(allBytes), z.z1)
 	z.z1 = new(big.Int).SetBytes(allBytes[:z1Len])
 	z.z2 = new(big.Int).SetBytes(allBytes[z1Len : z1Len+z2Len])
 	z.xy = &commitment.ElGamal{}
