@@ -34,7 +34,7 @@ var _ = Describe("Sync Server", func() {
 
 	JustBeforeEach(func() {
 		wg = stdsync.WaitGroup{}
-		netservs = tests.NewNetwork(int(nProc))
+		netservs = tests.NewNetwork(int(nProc), time.Millisecond*100)
 		syncservs = make([]sync.Server, int(nProc))
 		start = time.Now().Add(50 * time.Millisecond)
 		for i := uint16(0); i < nProc; i++ {

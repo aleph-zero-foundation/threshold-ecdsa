@@ -50,7 +50,6 @@ func NewServer(pid, nProc uint16, startTime time.Time, roundDuration time.Durati
 func (s *server) Start() {
 	s.startWG.Add(2*int(s.nProc) - 2)
 	go func() {
-		timeout := 100 * time.Millisecond
 		for pid := range s.inDataConn {
 			if pid == int(s.pid) {
 				continue
@@ -58,7 +57,7 @@ func (s *server) Start() {
 			go func() {
 				defer s.startWG.Done()
 				for {
-					conn, err := s.net.Listen(timeout)
+					conn, err := s.net.Listen()
 					if err != nil {
 						continue
 					}
@@ -88,7 +87,7 @@ func (s *server) Start() {
 			go func(pid uint16) {
 				defer s.startWG.Done()
 				for {
-					conn, err := s.net.Dial(pid, timeout)
+					conn, err := s.net.Dial(pid)
 					if err != nil {
 						continue
 					}
