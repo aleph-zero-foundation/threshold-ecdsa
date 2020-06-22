@@ -54,6 +54,18 @@ func poly(deg uint16, a0 *big.Int) ([]*big.Int, error) {
 	return f, nil
 }
 
+func polyFake(deg uint16, a0 *big.Int) ([]*big.Int, error) {
+	f := make([]*big.Int, deg+1)
+	for i := range f {
+		if i == 0 {
+			f[i] = a0
+			continue
+		}
+		f[i] = big.NewInt(int64(i + 3))
+	}
+	return f, nil
+}
+
 func polyEval(f []*big.Int, x *big.Int, q *big.Int) *big.Int {
 	deg := len(f) - 1
 	eval := new(big.Int).Set(f[deg])

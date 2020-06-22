@@ -2,29 +2,29 @@ package zkpok_test
 
 import (
 	"bytes"
+	"fmt"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/crypto/commitment"
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/crypto/zkpok"
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/curve"
 	"math/big"
-	"fmt"
 )
 
 var _ = Describe("ZKEGKnow", func() {
 	var (
-		fct   *commitment.ElGamalFactory
-		c1    *commitment.ElGamal
-		c2    *commitment.ElGamal
-		cRefreshed    *commitment.ElGamal
-		g     curve.Group
-		h     curve.Point
-		value *big.Int
-		value2 *big.Int
-		r1     *big.Int
-		r2     *big.Int
-		rRefresh     *big.Int
-		err   error
+		fct        *commitment.ElGamalFactory
+		c1         *commitment.ElGamal
+		c2         *commitment.ElGamal
+		cRefreshed *commitment.ElGamal
+		g          curve.Group
+		h          curve.Point
+		value      *big.Int
+		value2     *big.Int
+		r1         *big.Int
+		r2         *big.Int
+		rRefresh   *big.Int
+		err        error
 	)
 	BeforeEach(func() {
 		g = curve.NewSecp256k1Group()
