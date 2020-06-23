@@ -28,9 +28,9 @@ type ZKEGKnow struct {
 
 //NewZKEGKnow creates ZKEGKnow proof of knowledge of witness (value, r) for commitment c
 func NewZKEGKnow(fct *commitment.ElGamalFactory, comm *commitment.ElGamal, value, rnd *big.Int) (*ZKEGKnow, error) {
-	g := fct.Curve()
-	sigma, _ := rand.Int(rand.Reader, g.Order())
-	rho, _ := rand.Int(rand.Reader, g.Order())
+	order := fct.Curve().Order()
+	sigma, _ := rand.Int(rand.Reader, order)
+	rho, _ := rand.Int(rand.Reader, order)
 
 	//e is the randomly produced challenge, here hash by Fiat-Shamir heuristic
 	buf := &bytes.Buffer{}
@@ -45,8 +45,8 @@ func NewZKEGKnow(fct *commitment.ElGamalFactory, comm *commitment.ElGamal, value
 	z1.Add(sigma, z1.Mul(e, rnd))
 	z2.Add(rho, z2.Mul(e, value))
 	xy := fct.Create(rho, sigma)
-	z1.Mod(&z1, fct.Curve().Order())
-	z2.Mod(&z2, fct.Curve().Order())
+	z1.Mod(&z1, order)
+	z2.Mod(&z2, order)
 
 	return &ZKEGKnow{
 		z1: &z1,

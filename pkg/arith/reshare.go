@@ -79,6 +79,7 @@ func (ads *ADSecret) Reshare(t uint16) (*TDSecret, error) {
 
 			effectiveCoefRands[i] = big.NewInt(0)
 			effectiveCoefRands[i].Add(coefRands[i], ads.r)
+			effectiveCoefRands[i].Mod(effectiveCoefRands[i], order)
 
 			coefEGKnows[i], err = zkpok.NewZKEGKnow(ads.egf, coefComms[i], f[i], effectiveCoefRands[i])
 			if err != nil {
@@ -92,7 +93,7 @@ func (ads *ADSecret) Reshare(t uint16) (*TDSecret, error) {
 		}
 		effectiveCoefRands[i] = coefRands[i]
 		coefComms[i] = ads.egf.Create(f[i], coefRands[i])
-		coefEGKnows[i], err = zkpok.NewZKEGKnow(ads.egf, coefComms[i], f[i], coefRands[i])
+		coefEGKnows[i], err = zkpok.NewZKEGKnow(ads.egf, coefComms[i], f[i], effectiveCoefRands[i])
 		if err != nil {
 			return nil, err
 		}
@@ -171,7 +172,7 @@ func (ads *ADSecret) Reshare(t uint16) (*TDSecret, error) {
 	check = func(pid uint16, data []byte) error {
 		buf := bytes.NewBuffer(data)
 		allCoefComms[pid] = make([]*commitment.ElGamal, t)
-		for i := range coefComms {
+		for i := range allCoefComms[pid] {
 			allCoefComms[pid][i] = &commitment.ElGamal{}
 			if err := allCoefComms[pid][i].Decode(buf); err != nil {
 				return err
@@ -229,7 +230,7 @@ func (ads *ADSecret) Reshare(t uint16) (*TDSecret, error) {
 		for i := uint16(0); i < t; i++ {
 			expexp := big.NewInt(int64(i))
 			expexp.Exp(exp, expexp, nil)
-			tmp = tmp.Exp(coefComms[i], expexp)
+			tmp.Exp(coefComms[i], expexp)
 			tmpInt.Mul(effectiveCoefRands[i], expexp)
 			egEval[pid].Compose(egEval[pid], tmp)
 			egEvalRands[pid].Add(egEvalRands[pid], tmpInt)
@@ -356,7 +357,6 @@ func (ads *ADSecret) Reshare(t uint16) (*TDSecret, error) {
 	share := big.NewInt(0)
 	shareRand := big.NewInt(0)
 	shareComms := make([]*commitment.ElGamal, nProc)
-	// shareComm := ads.egf.Neutral()
 	for pid, e := range recvEvals {
 		shareComms[pid] = ads.egf.Neutral()
 		// While this looks risky, note that resharing is part of preprocessing which can be aborted by a single node anyway
@@ -404,19 +404,20 @@ func (ads *ADSecret) Reshare(t uint16) (*TDSecret, error) {
 	check = func(pid uint16, data []byte) error {
 		buf := bytes.NewBuffer(data)
 		var (
-			eg commitment.ElGamal
+			egTemp commitment.ElGamal
+			egrefreshTemp zkpok.ZKEGRefresh
 		)
-		if err := egrefresh.Decode(buf); err != nil {
+		if err := egrefreshTemp.Decode(buf); err != nil {
 			return fmt.Errorf("STEP 10, decode: egrefresh %v", err)
 		}
-		if err := eg.Decode(buf); err != nil {
+		if err := egTemp.Decode(buf); err != nil {
 			return fmt.Errorf("STEP 10, decode: eg %v", err)
 		}
-		if egrefresh.Verify(ads.egf, shareComms[pid], &eg) != nil {
+		if egrefreshTemp.Verify(ads.egf, shareComms[pid], &egTemp) != nil {
 			return fmt.Errorf("STEP 10, Wrong proof")
 		}
 		// After checking that eg agrees with previous commitment, replace the old one with it
-		shareComms[pid] = &eg
+		shareComms[pid] = &egTemp
 
 		return nil
 	}

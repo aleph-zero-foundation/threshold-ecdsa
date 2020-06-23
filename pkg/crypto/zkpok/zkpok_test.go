@@ -66,10 +66,14 @@ var _ = Describe("ZKEGKnow", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			buf := &bytes.Buffer{}
-			_ = z1.Encode(buf)
+			if err := z1.Encode(buf); err != nil {
+				return fmt.Errorf("Error during ZKEGKnow encoding:", err)
+			}
 
 			z2 := &zkpok.ZKEGKnow{}
-			_ = z2.Decode(buf)
+			if err := z2.Decode(buf); err != nil {
+				return fmt.Errorf("Error during ZKEGKnow decoding:", err)
+			}
 			err = z2.Verify(fct, c1)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -103,18 +107,17 @@ var _ = Describe("ZKEGKnow", func() {
 
 			buf := &bytes.Buffer{}
 			erre := z1.Encode(buf)
+			Expect(erre).NotTo(HaveOccurred())
+
 			z2 := zkpok.ZKEGRefresh{}
 			errd := z2.Decode(buf)
-			fmt.Println(z2)
+			Expect(errd).NotTo(HaveOccurred())
 
 			err = z2.Verify(fct, c1, cRefreshed)
 			Expect(err).NotTo(HaveOccurred())
 
 			err2 := z2.Verify(fct, c2, cRefreshed)
-			Expect(err).NotTo(HaveOccurred())
 			Expect(err2).To(HaveOccurred())
-			Expect(erre).NotTo(HaveOccurred())
-			Expect(errd).NotTo(HaveOccurred())
 		})
 	})
 })
