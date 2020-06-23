@@ -404,7 +404,7 @@ func (ads *ADSecret) Reshare(t uint16) (*TDSecret, error) {
 	check = func(pid uint16, data []byte) error {
 		buf := bytes.NewBuffer(data)
 		var (
-			egTemp commitment.ElGamal
+			egTemp        commitment.ElGamal
 			egrefreshTemp zkpok.ZKEGRefresh
 		)
 		if err := egrefreshTemp.Decode(buf); err != nil {

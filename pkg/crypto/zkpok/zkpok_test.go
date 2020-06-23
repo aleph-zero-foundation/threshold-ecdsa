@@ -2,7 +2,6 @@ package zkpok_test
 
 import (
 	"bytes"
-	"fmt"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"gitlab.com/alephledger/threshold-ecdsa/pkg/crypto/commitment"
@@ -66,14 +65,13 @@ var _ = Describe("ZKEGKnow", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			buf := &bytes.Buffer{}
-			if err := z1.Encode(buf); err != nil {
-				return fmt.Errorf("Error during ZKEGKnow encoding:", err)
-			}
+			err = z1.Encode(buf)
+			Expect(err).NotTo(HaveOccurred())
 
 			z2 := &zkpok.ZKEGKnow{}
-			if err := z2.Decode(buf); err != nil {
-				return fmt.Errorf("Error during ZKEGKnow decoding:", err)
-			}
+			err = z2.Decode(buf)
+			Expect(err).NotTo(HaveOccurred())
+
 			err = z2.Verify(fct, c1)
 			Expect(err).NotTo(HaveOccurred())
 
