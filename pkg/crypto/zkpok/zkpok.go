@@ -148,7 +148,7 @@ func (z *ZKEGRerand) Encode(w io.Writer) error { return nil }
 func (z *ZKEGRerand) Decode(r io.Reader) error { return nil }
 
 //ZKEGExp implements proof that commitment c3 results from commitments c1 and c2.
-//Specicically, if c2 is an ElGamal commitment to y with t as a randomizing element,
+//Specicically, if c2 is an ElGamal commitment to y with r as a randomizing element,
 //then ZKEGExp proves that c3 is formed as c1^y*ElGamal(0,r).
 type ZKEGExp struct {
 	z1 big.Int
